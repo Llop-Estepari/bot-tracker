@@ -53,12 +53,16 @@ Creo búsquedas con filtros y te aviso por aquí cada vez que aparece un anuncio
 <b>Campos de /editar</b>
 <code>nombre</code>, <code>palabras</code>, <code>min</code>, <code>max</code>,
 <code>radio</code>, <code>intervalo</code>, <code>excluir</code>,
-<code>plataformas</code>, <code>zona</code>, <code>estricto</code>
+<code>plataformas</code>, <code>zona</code>, <code>estricto</code>,
+<code>precios</code>
 
 El <b>modo estricto</b> (activado por defecto) descarta anuncios cuyo título
 no contenga ninguna palabra clave. Desactívalo con
 <code>/editar 3 estricto off</code> si crees que se te escapan anuncios
 (por ejemplo, títulos que solo usan siglas).
+
+Las <b>bajadas de precio</b> de anuncios ya vistos se avisan por defecto.
+Desactívalas con <code>/editar 3 precios off</code>.
 
 <b>Ejemplos</b>
 <code>/editar 3 min 100</code>
@@ -182,7 +186,12 @@ def format_alert(alert: Alert) -> str:
 
     status = "🟢 activa" if alert.active else "⏸ pausada"
     strict = " · 🎯 estricto" if alert.strict_keywords else ""
-    lines.append(f"⏱ cada {alert.interval_seconds}s · {status}{strict}")
+    price_alerts = (
+        " · 📉 precio" if alert.notify_price_changes else " · 📉 precio off"
+    )
+    lines.append(
+        f"⏱ cada {alert.interval_seconds}s · {status}{strict}{price_alerts}"
+    )
     lines.append(
         "👁 última comprobación: " + html.escape(alert.last_checked_at or "nunca")
     )
@@ -249,6 +258,15 @@ def format_uptime(seconds: int) -> str:
         parts.append(f"{hours}h")
     parts.append(f"{minutes}m")
     return " ".join(parts)
+
+
+def parse_toggle(value: str) -> bool:
+    normalized = value.lower()
+    if normalized in {"on", "si", "sí", "true", "1", "activar"}:
+        return True
+    if normalized in {"off", "no", "false", "0", "desactivar"}:
+        return False
+    raise ValueError("usa on u off")
 
 
 async def parse_location_input(
@@ -443,7 +461,7 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             update,
             "Uso: <code>/editar &lt;id&gt; &lt;campo&gt; &lt;valor&gt;</code>\n\n"
             "Campos: nombre, palabras, min, max, radio, intervalo, excluir,"
-            " plataformas, zona.\n"
+            " plataformas, zona, precios.\n"
             "Ej.: <code>/editar 3 min 100</code> · "
             "<code>/editar 3 zona Madrid 30</code>",
         )
@@ -507,14 +525,13 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 raise ValueError("usa wallapop, vinted o ambas")
             await db.update_alert(alert.id, platforms=platforms)
         elif field in {"estricto", "strict"}:
-            normalized = value.lower()
-            if normalized in {"on", "si", "sí", "true", "1", "activar"}:
-                strict = True
-            elif normalized in {"off", "no", "false", "0", "desactivar"}:
-                strict = False
-            else:
-                raise ValueError("usa on u off")
-            await db.update_alert(alert.id, strict_keywords=strict)
+            await db.update_alert(
+                alert.id, strict_keywords=parse_toggle(value)
+            )
+        elif field in {"precios", "bajadas", "precio_bajadas"}:
+            await db.update_alert(
+                alert.id, notify_price_changes=parse_toggle(value)
+            )
         elif field in {"zona", "ubicacion", "ubicación"}:
             latitude, longitude, radius = await parse_location_input(
                 value, alert.radius_km or DEFAULT_RADIUS_KM
@@ -865,6 +882,11 @@ async def new_notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             f" /editar {alert.id} estricto off."
             if alert.strict_keywords
             else ""
+        )
+        + (
+            f"\n\n📉 Si un anuncio que ya te he avisado baja de precio, te"
+            f" avisaré también. Desactívalo con"
+            f" /editar {alert.id} precios off."
         ),
     )
     context.user_data.pop("wizard", None)

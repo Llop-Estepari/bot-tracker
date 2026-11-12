@@ -2,9 +2,46 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from db import Database, NewAlert
+
+OLD_SCHEMA = """
+CREATE TABLE alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    platforms TEXT NOT NULL,
+    keywords TEXT NOT NULL DEFAULT '',
+    min_price REAL,
+    max_price REAL,
+    latitude REAL,
+    longitude REAL,
+    radius_km INTEGER,
+    wallapop_category_id INTEGER,
+    vinted_catalog_ids TEXT NOT NULL DEFAULT '',
+    vinted_brand_ids TEXT NOT NULL DEFAULT '',
+    vinted_condition_ids TEXT NOT NULL DEFAULT '',
+    exclude_words TEXT NOT NULL DEFAULT '',
+    strict_keywords INTEGER NOT NULL DEFAULT 1,
+    interval_seconds INTEGER NOT NULL,
+    notify_existing INTEGER NOT NULL DEFAULT 0,
+    seeded INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    last_checked_at TEXT
+);
+
+CREATE TABLE seen_items (
+    alert_id INTEGER NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    first_seen_at TEXT NOT NULL,
+    PRIMARY KEY (alert_id, source, item_id)
+);
+"""
 
 
 @pytest.fixture
@@ -39,6 +76,7 @@ async def test_crear_y_leer_alerta(database):
     assert alert.min_price == 50
     assert alert.active is True
     assert alert.notify_existing is False
+    assert alert.notify_price_changes is True
 
     fetched = await database.get_alert(alert.id)
     assert fetched is not None
@@ -53,12 +91,14 @@ async def test_actualizar_listas_y_booleanos(database):
         alert.id,
         platforms=["vinted"],
         vinted_brand_ids=[53, 417],
+        notify_price_changes=False,
         active=False,
     )
 
     assert updated is not None
     assert updated.platforms == ["vinted"]
     assert updated.vinted_brand_ids == [53, 417]
+    assert updated.notify_price_changes is False
     assert updated.active is False
 
 
@@ -97,3 +137,42 @@ async def test_borrar_alerta_elimina_vistos(database):
     ) as cursor:
         row = await cursor.fetchone()
     assert row[0] == 0
+
+
+async def test_guarda_y_actualiza_el_ultimo_precio(database):
+    alert = await database.create_alert(make_new_alert())
+
+    await database.mark_seen(alert.id, "wallapop", "1", 100)
+    await database.mark_seen(alert.id, "wallapop", "2")
+
+    prices = await database.get_seen_prices(
+        alert.id, "wallapop", ["1", "2", "3"]
+    )
+    assert prices == {"1": 100.0, "2": None}
+
+    await database.update_seen_prices(alert.id, "wallapop", {"1": 80})
+    prices = await database.get_seen_prices(alert.id, "wallapop", ["1", "2"])
+    assert prices == {"1": 80.0, "2": None}
+
+
+async def test_migracion_anade_columnas_de_precio(tmp_path):
+    path = tmp_path / "old.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(OLD_SCHEMA)
+    connection.close()
+
+    database = Database(path)
+    await database.connect()
+    try:
+        async with database.conn.execute(
+            "PRAGMA table_info(alerts)"
+        ) as cursor:
+            alert_columns = {row["name"] for row in await cursor.fetchall()}
+        async with database.conn.execute(
+            "PRAGMA table_info(seen_items)"
+        ) as cursor:
+            seen_columns = {row["name"] for row in await cursor.fetchall()}
+        assert "notify_price_changes" in alert_columns
+        assert "last_price" in seen_columns
+    finally:
+        await database.close()

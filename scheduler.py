@@ -151,30 +151,102 @@ class Tracker:
             candidates = [
                 listing for listing in listings if matches(listing, alert)
             ]
-            unseen: list[Listing] = []
-            for listing in candidates:
-                if not await self._db.is_seen(
-                    alert.id, platform, listing.item_id
-                ):
-                    unseen.append(listing)
-
-            if not unseen:
+            if not candidates:
                 continue
+
+            seen_prices = await self._db.get_seen_prices(
+                alert.id, platform, [item.item_id for item in candidates]
+            )
+
+            new_items: list[Listing] = []
+            price_drops: list[tuple[Listing, float]] = []
+            silent_updates: dict[str, float | None] = {}
+
+            for listing in candidates:
+                if listing.item_id not in seen_prices:
+                    new_items.append(listing)
+                    continue
+                old_price = seen_prices[listing.item_id]
+                if old_price is None:
+                    # Registro anterior a los avisos de precio: se rellena en
+                    # silencio para no avisar de un cambio ficticio.
+                    silent_updates[listing.item_id] = listing.price
+                elif (
+                    (not first_pass or alert.notify_existing)
+                    and alert.notify_price_changes
+                    and listing.price is not None
+                    and listing.price < old_price - 0.001
+                ):
+                    price_drops.append((listing, old_price))
+                elif listing.price != old_price:
+                    silent_updates[listing.item_id] = listing.price
 
             if first_pass and not alert.notify_existing:
-                await self._db.mark_seen_many(
-                    alert.id, platform, [item.item_id for item in unseen]
+                await self._db.update_seen_prices(
+                    alert.id, platform, silent_updates
                 )
-                logger.info(
-                    "Alerta #%s (%s): %d anuncios iniciales registrados sin avisar",
-                    alert.id,
-                    platform,
-                    len(unseen),
-                )
+                if new_items:
+                    await self._db.mark_seen_many(
+                        alert.id,
+                        platform,
+                        [item.item_id for item in new_items],
+                        {item.item_id: item.price for item in new_items},
+                    )
+                    logger.info(
+                        "Alerta #%s (%s): %d anuncios iniciales registrados"
+                        " sin avisar",
+                        alert.id,
+                        platform,
+                        len(new_items),
+                    )
                 continue
 
-            limit = self._settings.max_notifications_per_check
-            to_send = unseen[:limit]
+            await self._db.update_seen_prices(
+                alert.id, platform, silent_updates
+            )
+
+            budget = self._settings.max_notifications_per_check
+            overflow_drops: list[tuple[Listing, float]] = []
+            for index, (listing, old_price) in enumerate(price_drops):
+                if budget <= 0:
+                    overflow_drops = price_drops[index:]
+                    break
+                try:
+                    await self._notifier.send_price_change(
+                        alert, listing, old_price
+                    )
+                except Exception:
+                    logger.exception(
+                        "No se pudo avisar de la bajada de precio del"
+                        " anuncio %s (%s)",
+                        listing.item_id,
+                        platform,
+                    )
+                    continue
+                await self._db.update_seen_prices(
+                    alert.id, platform, {listing.item_id: listing.price}
+                )
+                sent += 1
+                budget -= 1
+                await asyncio.sleep(SECONDS_BETWEEN_MESSAGES)
+
+            if overflow_drops:
+                await self._db.update_seen_prices(
+                    alert.id,
+                    platform,
+                    {
+                        listing.item_id: listing.price
+                        for listing, _ in overflow_drops
+                    },
+                )
+                await self._notifier.send_text(
+                    alert.chat_id,
+                    f"🔔 <b>{html.escape(alert.name)}</b>:"
+                    f" {len(overflow_drops)} bajadas de precio más."
+                    f" Escribe /probar {alert.id} para verlas.",
+                )
+
+            to_send = new_items[:budget]
             for listing in to_send:
                 try:
                     await self._notifier.send_listing(alert, listing)
@@ -185,11 +257,13 @@ class Tracker:
                         platform,
                     )
                     continue
-                await self._db.mark_seen(alert.id, platform, listing.item_id)
+                await self._db.mark_seen(
+                    alert.id, platform, listing.item_id, listing.price
+                )
                 sent += 1
                 await asyncio.sleep(SECONDS_BETWEEN_MESSAGES)
 
-            overflow = unseen[limit:]
+            overflow = new_items[len(to_send) :]
             if overflow:
                 await self._notifier.send_text(
                     alert.chat_id,
@@ -198,7 +272,10 @@ class Tracker:
                     f" Escribe /probar {alert.id} para verlos.",
                 )
                 await self._db.mark_seen_many(
-                    alert.id, platform, [item.item_id for item in overflow]
+                    alert.id,
+                    platform,
+                    [item.item_id for item in overflow],
+                    {item.item_id: item.price for item in overflow},
                 )
 
         if first_pass and seeded_any:

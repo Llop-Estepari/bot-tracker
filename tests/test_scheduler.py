@@ -64,10 +64,16 @@ class FakeSource:
 class FakeNotifier:
     def __init__(self) -> None:
         self.listings: list[str] = []
+        self.price_changes: list[tuple[str, float, float | None]] = []
         self.texts: list[str] = []
 
     async def send_listing(self, alert, listing) -> None:
         self.listings.append(listing.item_id)
+
+    async def send_price_change(self, alert, listing, old_price) -> None:
+        self.price_changes.append(
+            (listing.item_id, old_price, listing.price)
+        )
 
     async def send_text(self, chat_id, text, reply_markup=None) -> None:
         self.texts.append(text)
@@ -184,3 +190,111 @@ async def test_limita_avisos_y_resume_el_resto(database):
     assert notifier.listings == ["0", "1"]
     assert notifier.texts and "3 anuncios más" in notifier.texts[0]
     assert await database.seen_count(alert.id) == 5
+
+
+async def test_baja_de_precio_avisa(database):
+    alert = await create_alert(database)
+    source = FakeSource([make_listing("1", price=100)])
+    notifier = FakeNotifier()
+    tracker = Tracker(make_settings(), database, {"wallapop": source}, notifier)
+
+    await tracker.check_alert(alert)
+
+    source.listings = [make_listing("1", price=80)]
+    sent = await tracker.check_alert(await database.get_alert(alert.id))
+
+    assert sent == 1
+    assert notifier.listings == []
+    assert notifier.price_changes == [("1", 100.0, 80.0)]
+    prices = await database.get_seen_prices(alert.id, "wallapop", ["1"])
+    assert prices["1"] == 80
+
+
+async def test_subida_de_precio_actualiza_sin_avisar(database):
+    alert = await create_alert(database)
+    source = FakeSource([make_listing("1", price=100)])
+    notifier = FakeNotifier()
+    tracker = Tracker(make_settings(), database, {"wallapop": source}, notifier)
+
+    await tracker.check_alert(alert)
+
+    source.listings = [make_listing("1", price=120)]
+    sent = await tracker.check_alert(await database.get_alert(alert.id))
+
+    assert sent == 0
+    assert notifier.price_changes == []
+    prices = await database.get_seen_prices(alert.id, "wallapop", ["1"])
+    assert prices["1"] == 120
+
+
+async def test_mismo_precio_no_avisa(database):
+    alert = await create_alert(database)
+    source = FakeSource([make_listing("1", price=100)])
+    notifier = FakeNotifier()
+    tracker = Tracker(make_settings(), database, {"wallapop": source}, notifier)
+
+    await tracker.check_alert(alert)
+    sent = await tracker.check_alert(await database.get_alert(alert.id))
+
+    assert sent == 0
+    assert notifier.price_changes == []
+
+
+async def test_baja_sin_avisos_de_precio_no_notifica(database):
+    alert = await create_alert(database, notify_price_changes=False)
+    source = FakeSource([make_listing("1", price=100)])
+    notifier = FakeNotifier()
+    tracker = Tracker(make_settings(), database, {"wallapop": source}, notifier)
+
+    await tracker.check_alert(alert)
+
+    source.listings = [make_listing("1", price=80)]
+    sent = await tracker.check_alert(await database.get_alert(alert.id))
+
+    assert sent == 0
+    assert notifier.price_changes == []
+    prices = await database.get_seen_prices(alert.id, "wallapop", ["1"])
+    assert prices["1"] == 80
+
+
+async def test_precio_antiguo_sin_dato_se_rellena_sin_avisar(database):
+    alert = await create_alert(database)
+    await database.mark_seen(alert.id, "wallapop", "1")
+    await database.update_alert(alert.id, seeded=True)
+
+    source = FakeSource([make_listing("1", price=100)])
+    notifier = FakeNotifier()
+    tracker = Tracker(make_settings(), database, {"wallapop": source}, notifier)
+
+    sent = await tracker.check_alert(await database.get_alert(alert.id))
+
+    assert sent == 0
+    assert notifier.price_changes == []
+    prices = await database.get_seen_prices(alert.id, "wallapop", ["1"])
+    assert prices["1"] == 100
+
+
+async def test_limite_incluye_bajas_y_resume_el_resto(database):
+    alert = await create_alert(database)
+    source = FakeSource(
+        [make_listing("1", price=100), make_listing("2", price=100)]
+    )
+    notifier = FakeNotifier()
+    settings = make_settings(max_notifications_per_check=1)
+    tracker = Tracker(settings, database, {"wallapop": source}, notifier)
+
+    await tracker.check_alert(alert)
+
+    source.listings = [
+        make_listing("1", price=80),
+        make_listing("2", price=70),
+    ]
+    sent = await tracker.check_alert(await database.get_alert(alert.id))
+
+    assert sent == 1
+    assert len(notifier.price_changes) == 1
+    assert notifier.texts and "bajadas de precio" in notifier.texts[0]
+    prices = await database.get_seen_prices(
+        alert.id, "wallapop", ["1", "2"]
+    )
+    assert prices == {"1": 80.0, "2": 70.0}

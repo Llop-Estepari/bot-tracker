@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     strict_keywords INTEGER NOT NULL DEFAULT 1,
     interval_seconds INTEGER NOT NULL,
     notify_existing INTEGER NOT NULL DEFAULT 0,
+    notify_price_changes INTEGER NOT NULL DEFAULT 1,
     seeded INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS seen_items (
     source TEXT NOT NULL,
     item_id TEXT NOT NULL,
     first_seen_at TEXT NOT NULL,
+    last_price REAL,
     PRIMARY KEY (alert_id, source, item_id)
 );
 
@@ -70,6 +72,7 @@ UPDATABLE_FIELDS = {
     "strict_keywords",
     "interval_seconds",
     "notify_existing",
+    "notify_price_changes",
     "seeded",
     "active",
     "last_checked_at",
@@ -117,6 +120,7 @@ class Alert:
     strict_keywords: bool
     interval_seconds: int
     notify_existing: bool
+    notify_price_changes: bool
     seeded: bool
     active: bool
     created_at: str
@@ -142,6 +146,7 @@ class NewAlert:
     strict_keywords: bool = True
     interval_seconds: int = 90
     notify_existing: bool = False
+    notify_price_changes: bool = True
 
 
 def _row_to_alert(row: aiosqlite.Row) -> Alert:
@@ -164,6 +169,7 @@ def _row_to_alert(row: aiosqlite.Row) -> Alert:
         strict_keywords=bool(row["strict_keywords"]),
         interval_seconds=row["interval_seconds"],
         notify_existing=bool(row["notify_existing"]),
+        notify_price_changes=bool(row["notify_price_changes"]),
         seeded=bool(row["seeded"]),
         active=bool(row["active"]),
         created_at=row["created_at"],
@@ -205,6 +211,18 @@ class Database:
             await self.conn.execute(
                 "ALTER TABLE alerts ADD COLUMN seeded INTEGER NOT NULL DEFAULT 0"
             )
+        if "notify_price_changes" not in columns:
+            await self.conn.execute(
+                "ALTER TABLE alerts ADD COLUMN notify_price_changes"
+                " INTEGER NOT NULL DEFAULT 1"
+            )
+
+        async with self.conn.execute("PRAGMA table_info(seen_items)") as cursor:
+            seen_columns = {row["name"] for row in await cursor.fetchall()}
+        if "last_price" not in seen_columns:
+            await self.conn.execute(
+                "ALTER TABLE seen_items ADD COLUMN last_price REAL"
+            )
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -221,8 +239,8 @@ class Database:
                 latitude, longitude, radius_km, wallapop_category_id,
                 vinted_catalog_ids, vinted_brand_ids, vinted_condition_ids,
                 exclude_words, strict_keywords, interval_seconds,
-                notify_existing, seeded, active, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
+                notify_existing, notify_price_changes, seeded, active, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
             """,
             (
                 new.chat_id,
@@ -242,6 +260,7 @@ class Database:
                 int(new.strict_keywords),
                 new.interval_seconds,
                 int(new.notify_existing),
+                int(new.notify_price_changes),
                 utcnow_iso(),
             ),
         )
@@ -319,19 +338,75 @@ class Database:
         ) as cursor:
             return await cursor.fetchone() is not None
 
-    async def mark_seen(self, alert_id: int, source: str, item_id: str) -> None:
-        await self.mark_seen_many(alert_id, source, [item_id])
+    async def mark_seen(
+        self,
+        alert_id: int,
+        source: str,
+        item_id: str,
+        price: float | None = None,
+    ) -> None:
+        await self.mark_seen_many(
+            alert_id, source, [item_id], {item_id: price}
+        )
 
     async def mark_seen_many(
-        self, alert_id: int, source: str, item_ids: list[str]
+        self,
+        alert_id: int,
+        source: str,
+        item_ids: list[str],
+        prices: dict[str, float | None] | None = None,
     ) -> None:
         if not item_ids:
             return
         now = utcnow_iso()
+        prices = prices or {}
         await self.conn.executemany(
-            "INSERT OR IGNORE INTO seen_items (alert_id, source, item_id, first_seen_at)"
-            " VALUES (?, ?, ?, ?)",
-            [(alert_id, source, item_id, now) for item_id in item_ids],
+            "INSERT OR IGNORE INTO seen_items"
+            " (alert_id, source, item_id, first_seen_at, last_price)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [
+                (alert_id, source, item_id, now, prices.get(item_id))
+                for item_id in item_ids
+            ],
+        )
+        await self.conn.commit()
+
+    async def get_seen_prices(
+        self, alert_id: int, source: str, item_ids: list[str]
+    ) -> dict[str, float | None]:
+        """Precio guardado de los anuncios vistos indicados (si existen)."""
+        result: dict[str, float | None] = {}
+        for start in range(0, len(item_ids), 500):
+            chunk = item_ids[start : start + 500]
+            if not chunk:
+                continue
+            placeholders = ",".join("?" for _ in chunk)
+            async with self.conn.execute(
+                "SELECT item_id, last_price FROM seen_items"
+                f" WHERE alert_id = ? AND source = ?"
+                f" AND item_id IN ({placeholders})",
+                (alert_id, source, *chunk),
+            ) as cursor:
+                async for row in cursor:
+                    result[row["item_id"]] = row["last_price"]
+        return result
+
+    async def update_seen_prices(
+        self,
+        alert_id: int,
+        source: str,
+        prices: dict[str, float | None],
+    ) -> None:
+        """Actualiza el último precio conocido de anuncios ya vistos."""
+        if not prices:
+            return
+        await self.conn.executemany(
+            "UPDATE seen_items SET last_price = ?"
+            " WHERE alert_id = ? AND source = ? AND item_id = ?",
+            [
+                (price, alert_id, source, item_id)
+                for item_id, price in prices.items()
+            ],
         )
         await self.conn.commit()
 

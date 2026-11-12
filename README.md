@@ -8,6 +8,8 @@ Telegram en cuanto aparece un anuncio nuevo que encaja con tus filtros.
 - Palabras excluidas y **modo estricto** para eliminar resultados irrelevantes.
 - Cada búsqueda tiene su propio intervalo (60 s – 1 h, por defecto 90 s).
 - Deduplicación en SQLite: nunca recibes dos veces el mismo anuncio.
+- Aviso de **bajada de precio** cuando un anuncio ya visto se abarata
+  (activable por búsqueda).
 - Avisos con foto, precio, ubicación y enlace directo, con botón para
   silenciar la búsqueda.
 - Todo se gestiona desde el chat: no hay que editar archivos para cambiar
@@ -113,6 +115,7 @@ El asistente pide, paso a paso:
 /editar 3 plataformas ambas
 /editar 3 intervalo 120
 /editar 3 estricto off
+/editar 3 precios off
 ```
 
 El **modo estricto** está activo por defecto: descarta anuncios cuyo título no
@@ -151,6 +154,12 @@ Usa `-` como valor para borrar un filtro.
   avisar (salvo que hayas pedido lo contrario), para que no recibas un aluvión
   inicial.
 - Cada anuncio se guarda en `seen_items`: si ya se avisó, no se repite.
+- Si un anuncio ya visto **baja de precio**, se envía un aviso aparte con el
+  precio anterior y el nuevo. Se puede desactivar por búsqueda con
+  `/editar <id> precios off`. Solo se detecta mientras el anuncio siga
+  apareciendo en los resultados y siga cumpliendo los filtros; las APIs
+  devuelven las primeras posiciones ordenadas por novedad, así que un anuncio
+  muy antiguo puede salir de esa ventana.
 - Filtros server-side: palabras, precio, zona, categoría, marca y estado.
 - Filtros client-side: modo estricto, palabras excluidas y comprobación
   defensiva de precio.
@@ -296,6 +305,37 @@ cd ~/bot-tracker
 tmux new -s bot '.venv/bin/python main.py 2>&1 | tee -a bot.log'
 # salir sin matar el bot: Ctrl+B, D
 ```
+
+### Actualizar una instalación existente
+
+La primera vez (o si todavía no existe `deploy/termux-update.sh`):
+
+```bash
+tmux kill-session -t bot 2>/dev/null || true
+cd ~/bot-tracker
+cp tracker.db ~/tracker-backup-$(date +%F-%H%M).db
+cp .env ~/.env-backup-$(date +%F-%H%M)
+git pull --ff-only
+.venv/bin/pip install -r requirements-termux.txt
+tmux new-session -d -s bot \
+  "cd '$HOME/bot-tracker' && exec .venv/bin/python main.py >> bot.log 2>&1"
+```
+
+A partir de ahí, las siguientes actualizaciones se hacen con:
+
+```bash
+bash ~/bot-tracker/deploy/termux-update.sh
+```
+
+El script para el bot, guarda copias con fecha de `tracker.db` y `.env` en
+`~/bot-tracker-backups/`, hace `git pull --ff-only`, instala dependencias solo
+si cambiaron los `requirements`, valida que el código compila, reinicia en
+`tmux` y vuelve al commit anterior si algo falla. Nunca toca `.env`, `.venv`,
+`tracker.db` ni `bot.log`.
+
+Si el móvil no es un clon de Git, `git status` fallará: vuelve a clonar el
+repositorio conservando `.env` y `tracker.db`, o usa la copia por `adb` del
+apartado anterior.
 
 ### Persistencia y batería
 

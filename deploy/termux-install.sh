@@ -42,7 +42,7 @@ echo "== 3/7 Creando entorno virtual =="
 cd "$DEST"
 python -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements-termux.txt
+.venv/bin/pip install -r requirements.txt
 
 echo
 echo "== 4/7 Configuración =="
@@ -90,7 +90,7 @@ termux-wake-lock || true
 
 echo
 echo "== INSTALACIÓN COMPLETA =="
-echo "Cuando Fly esté parado, arranca el bot con:"
+echo "Arranca el bot con:"
 echo
 echo "  cd ~/bot-tracker && tmux new -s bot '.venv/bin/python main.py 2>&1 | tee -a bot.log'"
 echo

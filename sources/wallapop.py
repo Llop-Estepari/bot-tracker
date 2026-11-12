@@ -1,13 +1,7 @@
-"""Cliente de la API interna de Wallapop.
-
-Usa `httpx` por defecto (verificado: la API responde sin impersonación TLS) y
-recurre a `curl_cffi` solo si CloudFront devuelve 403. Así funciona en Termux
-sin dependencias nativas y mantiene el fallback en servidores con IP vigilada.
-"""
+"""Cliente de la API interna de Wallapop."""
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -24,23 +18,12 @@ from sources.base import (
 if TYPE_CHECKING:
     from db import Alert
 
-logger = logging.getLogger(__name__)
-
 DISPLAY_NAME = "Wallapop"
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
     " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
-
-
-def _load_async_session():
-    """Devuelve AsyncSession de curl_cffi si está instalado; si no, None."""
-    try:
-        from curl_cffi.requests import AsyncSession
-    except ImportError:
-        return None
-    return AsyncSession
 
 
 def parse_search(payload: dict[str, Any], web_base: str) -> list[Listing]:
@@ -109,22 +92,16 @@ class WallapopSource:
         self,
         api_base: str,
         web_base: str,
-        proxy: str | None = None,
         timeout: float = 25.0,
     ) -> None:
         self._api_base = api_base.rstrip("/")
         self._web_base = web_base.rstrip("/")
-        self._proxy = proxy
         self._timeout = timeout
-        client_kwargs: dict[str, Any] = {
-            "timeout": timeout,
-            "follow_redirects": True,
-            "headers": {"User-Agent": USER_AGENT},
-        }
-        if proxy:
-            client_kwargs["proxy"] = proxy
-        self._client = httpx.AsyncClient(**client_kwargs)
-        self._cffi_session = None
+        self._client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            headers={"User-Agent": USER_AGENT},
+        )
         self._headers = {
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "es-ES,es;q=0.9",
@@ -166,46 +143,14 @@ class WallapopSource:
         except httpx.HTTPError as exc:
             raise SourceError(f"Error de red en Wallapop: {exc}") from exc
 
-        if response.status_code == 403:
-            logger.info("Wallapop devolvió 403 con httpx; probando curl_cffi")
-            payload = await self._search_with_curl_cffi(params)
-        else:
-            payload = self._parse_response(response)
-
-        return parse_search(payload, self._web_base)
-
-    async def _search_with_curl_cffi(
-        self, params: dict[str, Any]
-    ) -> dict[str, Any]:
-        if self._cffi_session is None:
-            async_session = _load_async_session()
-            if async_session is None:
-                raise BlockedError(
-                    "Wallapop bloqueó la petición (403) y curl_cffi no está"
-                    " instalado. Instálalo con `pip install curl_cffi` o"
-                    " configura WALLAPOP_PROXY."
-                )
-            self._cffi_session = async_session(
-                impersonate="chrome", timeout=self._timeout, max_clients=4
-            )
-        try:
-            response = await self._cffi_session.get(
-                f"{self._api_base}/api/v3/search",
-                params=params,
-                headers=self._headers,
-                proxy=self._proxy,
-            )
-        except Exception as exc:
-            raise SourceError(f"Error de red en Wallapop: {exc}") from exc
-        return self._parse_response(response)
+        return parse_search(self._parse_response(response), self._web_base)
 
     def _parse_response(self, response: Any) -> dict[str, Any]:
         if response.status_code == 429:
             raise RateLimitError("Wallapop está limitando las peticiones (429)")
         if response.status_code in (401, 403):
             raise BlockedError(
-                "Wallapop bloqueó la petición (403). Si el bot corre en un"
-                " servidor, configura WALLAPOP_PROXY con un proxy residencial."
+                "Wallapop bloqueó la petición (403). Inténtalo más tarde."
             )
         if response.status_code != 200:
             raise SourceError(f"Wallapop respondió HTTP {response.status_code}")
@@ -219,5 +164,3 @@ class WallapopSource:
 
     async def close(self) -> None:
         await self._client.aclose()
-        if self._cffi_session is not None:
-            await self._cffi_session.close()

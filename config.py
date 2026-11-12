@@ -61,10 +61,8 @@ class Settings:
     seen_retention_days: int
     wallapop_base_url: str
     wallapop_api_base: str
-    wallapop_proxy: str | None
     vinted_base_url: str
     vinted_locale: str
-    vinted_proxy: str | None
     request_timeout: float
     log_level: str
 
@@ -107,12 +105,10 @@ class Settings:
             wallapop_api_base=os.getenv(
                 "WALLAPOP_API_BASE", "https://api.wallapop.com"
             ).rstrip("/"),
-            wallapop_proxy=(os.getenv("WALLAPOP_PROXY") or "").strip() or None,
             vinted_base_url=os.getenv(
                 "VINTED_BASE_URL", "https://www.vinted.es"
             ).rstrip("/"),
             vinted_locale=os.getenv("VINTED_LOCALE", "es-ES").strip() or "es-ES",
-            vinted_proxy=(os.getenv("VINTED_PROXY") or "").strip() or None,
             request_timeout=_env_float("REQUEST_TIMEOUT_SECONDS", 25.0),
             log_level=log_level,
         )

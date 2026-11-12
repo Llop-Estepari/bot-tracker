@@ -36,14 +36,12 @@ async def post_init(app: Application) -> None:
         "wallapop": WallapopSource(
             api_base=settings.wallapop_api_base,
             web_base=settings.wallapop_base_url,
-            proxy=settings.wallapop_proxy,
             timeout=settings.request_timeout,
         ),
         "vinted": VintedSource(
             base_url=settings.vinted_base_url,
             locale=settings.vinted_locale,
             timeout=settings.request_timeout,
-            proxy=settings.vinted_proxy,
         ),
     }
     notifier = Notifier(app.bot)

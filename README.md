@@ -26,7 +26,7 @@ Telegram en cuanto aparece un anuncio nuevo que encaja con tus filtros.
 
 - Linux (probado en Python 3.14; funciona desde 3.11)
 - Un bot de Telegram (se crea gratis con [@BotFather](https://t.me/BotFather))
-- Un VPS o equipo encendido 24/7 (opcional, pero recomendable)
+- Un móvil Android con Termux para el hosting 24/7 (ver sección 6)
 
 ## 2. Instalación local
 
@@ -165,99 +165,11 @@ Usa `-` como valor para borrar un filtro.
   defensiva de precio.
 - Ante `429` la plataforma se enfría 3 minutos; ante `403` (bloqueo), 15
   minutos. El resto de plataformas siguen funcionando.
-- Wallapop exige parecer un navegador: se usa `curl_cffi` con TLS de Chrome.
+- Wallapop se consulta con `httpx` y las cabeceras de su web; si responde 403, la plataforma se enfría.
 - Vinted exige cookies de sesión: el bot visita la web, las guarda y las
   renueva automáticamente si caducan.
 
-## 6. Despliegue en un VPS (systemd)
-
-```bash
-# En el servidor, como root:
-useradd --system --home /opt/bot-tracker --shell /usr/sbin/nologin tracker
-mkdir -p /opt/bot-tracker
-# Copia el proyecto (rsync/scp/git) a /opt/bot-tracker y luego:
-cd /opt/bot-tracker
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-cp .env.example .env
-nano .env                      # token + ALLOWED_CHAT_IDS + DATABASE_PATH
-chown -R tracker:tracker /opt/bot-tracker
-chmod 600 .env
-
-cp deploy/tracker.service /etc/systemd/system/tracker.service
-systemctl daemon-reload
-systemctl enable --now tracker
-```
-
-Ver logs en directo:
-
-```bash
-journalctl -u tracker -f
-```
-
-Reiniciar tras cambiar el `.env`:
-
-```bash
-systemctl restart tracker
-```
-
-### Copias de seguridad
-
-Todo el estado vive en el SQLite (`DATABASE_PATH`, por defecto
-`/opt/bot-tracker/tracker.db`). Basta con copiar ese archivo:
-
-```bash
-sqlite3 /opt/bot-tracker/tracker.db ".backup /root/tracker-$(date +%F).db"
-```
-
-## 7. Despliegue en Fly.io
-
-La app se ejecuta como **worker** (sin HTTP): solo necesita una máquina y un
-volumen persistente para SQLite. El `Dockerfile` y `fly.toml` ya están
-incluidos.
-
-```bash
-# 1. Instalar flyctl y autenticarse
-curl -L https://fly.io/install.sh | sh
-export PATH="$HOME/.fly/bin:$PATH"
-fly auth login
-
-# 2. Crear la app en la organización y el volumen de datos
-fly apps create vinpop-bot --org llop
-fly volumes create vinpop_data --region mad --size 1 --app vinpop-bot --yes
-
-# 3. Secretos (nunca en fly.toml)
-fly secrets set --app vinpop-bot \
-  TELEGRAM_BOT_TOKEN=... \
-  ALLOWED_CHAT_IDS=<tu_chat_id>
-
-# 4. Desplegar y comprobar
-fly deploy --app vinpop-bot
-fly status --app vinpop-bot
-fly logs --app vinpop-bot
-```
-
-Notas:
-
-- **No escales a más de una máquina**: el polling de Telegram y SQLite son
-  singleton. Dos instancias provocan errores 409 y avisos duplicados.
-- La base de datos vive en el volumen, en `/data/tracker.db`
-  (`DATABASE_PATH`).
-- Si Wallapop bloquea la IP del datacenter, añade el secreto
-  `WALLAPOP_PROXY` con un proxy residencial:
-  `fly secrets set --app vinpop-bot WALLAPOP_PROXY=socks5h://...`
-- **Vinted bloquea las IPs de datacenter** (Fly, AWS, Hetzner…). Para que
-  funcione en Fly necesitas un proxy residencial:
-  `fly secrets set --app vinpop-bot VINTED_PROXY=http://usuario:clave@host:puerto`
-  Sin proxy, el bot solo avisará de Wallapop y Vinted quedará enfriado.
-- Copia de seguridad del SQLite:
-  ```bash
-  fly ssh console --app vinpop-bot \
-    -C "sqlite3 /data/tracker.db '.backup /data/tracker-backup.db'"
-  fly sftp get /data/tracker-backup.db --app vinpop-bot
-  ```
-
-## 8. Hosting en Android con Termux
+## 6. Hosting en Android con Termux
 
 Termux es la opción más barata (0 €/mes) y, al usar una IP residencial/móvil,
 permite **Wallapop y Vinted a la vez**. Requiere Termux y Termux:Boot desde
@@ -292,13 +204,13 @@ El instalador:
 
 1. Instala `python` y `tmux`.
 2. Copia el proyecto a `~/bot-tracker`.
-3. Crea el `.venv` e instala `requirements-termux.txt` (sin `curl_cffi`).
+3. Crea el `.venv` e instala `requirements.txt`.
 4. Coloca el `.env` y migra `tracker.db`.
 5. Ajusta las búsquedas a 300 s de intervalo.
 6. Comprueba Wallapop y Vinted desde la red del móvil.
 7. Configura `~/.termux/boot/start-bot.sh` para arrancar con el teléfono.
 
-### Arrancar (cuando Fly esté parado)
+### Arrancar el bot
 
 ```bash
 cd ~/bot-tracker
@@ -367,24 +279,16 @@ si cambiaron los `requirements`, valida que el código compila, reinicia en
   ronda 30–60 MB/día.
 - Termux:Boot ejecuta `start-bot.sh` al encender el móvil (tras desbloquearlo).
 
-### Cambiar entre móvil y Fly
+### Copias de seguridad
 
-Solo puede haber **un poller de Telegram activo**:
+El script de actualización guarda copias con fecha en `~/bot-tracker-backups/`.
+Para una copia manual del SQLite:
 
 ```bash
-# Pasar a móvil
-fly machine stop <id-de-la-maquina> -a vinpop-bot
-# y arrancar tmux en el móvil
-
-# Volver a Fly
-# (parar tmux en el móvil) y luego:
-fly machine start <id-de-la-maquina> -a vinpop-bot
+cp ~/bot-tracker/tracker.db ~/storage/shared/tracker-$(date +%F).db
 ```
 
-Sincroniza `tracker.db` en la dirección del nuevo host si quieres conservar
-las búsquedas y los anuncios vistos.
-
-## 9. Versiones y releases
+## 7. Versiones y releases
 
 La versión vive en `version.py` (única fuente de verdad) y se muestra en
 `/estado` y en el log de arranque.
@@ -428,14 +332,16 @@ La CI (`.github/workflows/ci.yml`):
 
 No se crean GitHub Releases: el historial vive en `CHANGELOG.md` y en los tags.
 
-### Actualizar los hosts
+### Actualizar el móvil
 
-- **Móvil/Termux**: `bash ~/bot-tracker/deploy/termux-update.sh` (hace
-  `git pull`, instala dependencias si cambiaron y reinicia).
-- **Fly.io** (solo si vuelves a usarlo): `fly deploy -a vinpop-bot`.
-- Comprueba con `/estado` que aparece la nueva versión.
+```bash
+bash ~/bot-tracker/deploy/termux-update.sh
+```
 
-## 10. Desarrollo y tests
+Hace `git pull`, instala dependencias si cambiaron y reinicia. Comprueba con
+`/estado` que aparece la nueva versión.
+
+## 8. Desarrollo y tests
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
@@ -446,21 +352,15 @@ Los tests cubren filtros, parseo de respuestas reales de ambas plataformas,
 persistencia y la lógica del scheduler (siembra inicial, deduplicación,
 límites de avisos) con fuentes simuladas. No hacen peticiones de red.
 
-## 11. Problemas frecuentes
+## 9. Problemas frecuentes
 
 **Wallapop responde 403 (Request blocked)**
-El WAF de CloudFront ha bloqueado la IP. El bot enfriará esa plataforma 15
-minutos. Si tu VPS está bloqueado de forma persistente, configura un proxy en
-el `.env`:
-
-```env
-WALLAPOP_PROXY=socks5h://usuario:clave@host:puerto
-```
+El WAF de CloudFront ha bloqueado la IP temporalmente. El bot enfriará esa
+plataforma 15 minutos. Desde una IP residencial/móvil no suele ocurrir.
 
 **Vinted responde 401/403**
-El bot renueva las cookies solo. Si persiste y estás en un VPS/datacenter, es
-un bloqueo por IP: configura `VINTED_PROXY` con un proxy residencial. Si el
-403 aparece también con proxy, puede que Vinted haya cambiado el endpoint
+El bot renueva las cookies solo. Desde una IP residencial/móvil no suele
+ocurrir. Si persiste, puede que Vinted haya cambiado el endpoint
 (`/svc-catalogue/items`): revisa `sources/vinted.py`.
 
 **La geocodificación falla**
@@ -469,7 +369,8 @@ coordenadas directamente: `/editar 3 zona 40.4168,-3.7038`.
 
 **No llegan avisos**
 Comprueba `/estado` (¿la alerta está activa? ¿hay plataformas enfriando?),
-lanza `/probar <id>` y revisa `journalctl -u tracker -f`.
+lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/bot.log` (o entra con
+`tmux attach -t bot`).
 
 **Cambiar de país**
 Ajusta en `.env`:
@@ -480,7 +381,7 @@ VINTED_BASE_URL=https://www.vinted.fr
 VINTED_LOCALE=fr-FR
 ```
 
-## 12. Estructura del proyecto
+## 10. Estructura del proyecto
 
 ```text
 main.py              Arranque: Telegram + scheduler
@@ -493,15 +394,15 @@ scheduler.py         Bucle de comprobación y deduplicación
 sources/wallapop.py  Cliente de Wallapop
 sources/vinted.py    Cliente de Vinted
 bot/handlers.py      Comandos, asistente y callbacks
-deploy/              systemd, Fly y scripts de Termux
-scripts/             Verificación de fuentes (check_sources.py)
+deploy/              Scripts de Termux (instalación, actualización y arranque)
+scripts/             Release, control de versión y verificación de fuentes
 tests/               Tests + fixtures reales de las APIs
-Dockerfile           Imagen para Fly.io y otros contenedores
-fly.toml             Worker + volumen persistente en Fly.io
-requirements-termux.txt  Dependencias sin curl_cffi para Android
+version.py           Versión de la aplicación
+CHANGELOG.md         Historial de versiones
+.github/workflows/   CI (tests, lint y control de versión)
 ```
 
-## 13. Aviso legal
+## 11. Aviso legal
 
 Este proyecto es de uso personal y no está afiliado a Wallapop ni a Vinted.
 Automatizar el acceso puede ir contra sus términos de servicio. El bot está

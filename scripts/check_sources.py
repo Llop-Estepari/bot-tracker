@@ -39,6 +39,7 @@ def make_alert() -> Alert:
         strict_keywords=False,
         interval_seconds=90,
         notify_existing=False,
+        notify_price_changes=True,
         seeded=True,
         active=True,
         created_at="",
@@ -53,14 +54,12 @@ async def main() -> int:
         "wallapop": WallapopSource(
             settings.wallapop_api_base,
             settings.wallapop_base_url,
-            settings.wallapop_proxy,
             settings.request_timeout,
         ),
         "vinted": VintedSource(
             settings.vinted_base_url,
             settings.vinted_locale,
             settings.request_timeout,
-            settings.vinted_proxy,
         ),
     }
 

@@ -24,10 +24,8 @@ def make_settings(**overrides) -> Settings:
         "seen_retention_days": 60,
         "wallapop_base_url": "https://es.wallapop.com",
         "wallapop_api_base": "https://api.wallapop.com",
-        "wallapop_proxy": None,
         "vinted_base_url": "https://www.vinted.es",
         "vinted_locale": "es-ES",
-        "vinted_proxy": None,
         "request_timeout": 25.0,
         "log_level": "INFO",
     }

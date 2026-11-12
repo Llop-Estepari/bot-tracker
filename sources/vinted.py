@@ -84,20 +84,16 @@ class VintedSource:
         base_url: str,
         locale: str = "es-ES",
         timeout: float = 25.0,
-        proxy: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_base = build_api_base(self._base_url)
         self._locale = locale
         self._timeout = timeout
-        client_kwargs: dict[str, Any] = {
-            "timeout": timeout,
-            "follow_redirects": True,
-            "headers": {"User-Agent": USER_AGENT},
-        }
-        if proxy:
-            client_kwargs["proxy"] = proxy
-        self._client = httpx.AsyncClient(**client_kwargs)
+        self._client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            headers={"User-Agent": USER_AGENT},
+        )
         self._session_ready = False
         self._api_headers = {
             "Accept": "application/json, text/plain, */*",
@@ -178,8 +174,6 @@ class VintedSource:
                     continue
                 raise BlockedError(
                     "Vinted bloqueó la petición (401/403) tras renovar la sesión."
-                    " Si el bot corre en un datacenter, configura VINTED_PROXY"
-                    " con un proxy residencial."
                 )
             if response.status_code == 429:
                 raise RateLimitError("Vinted está limitando las peticiones (429)")

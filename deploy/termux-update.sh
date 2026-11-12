@@ -143,7 +143,7 @@ echo
 echo "== 4/5 Dependencias y validación =="
 if git diff --name-only "$BEFORE" "$AFTER" | grep -qE '(^|/)requirements.*\.txt$'; then
     echo "Cambiaron los requirements; instalando dependencias…"
-    .venv/bin/pip install -r requirements-termux.txt
+    .venv/bin/pip install -r requirements.txt
 else
     echo "Sin cambios en dependencias."
 fi

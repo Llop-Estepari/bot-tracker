@@ -1,0 +1,333 @@
+{
+  "items": [
+    {
+      "content_source": "search",
+      "favourite_count": 0,
+      "id": 10771995596,
+      "is_favourite": false,
+      "item_box": {
+        "accessibility_label": "Ps2 slim, Marca: PlayStation, Estado: Muy bueno, 70.00 €, 74.20 €",
+        "exposures": [],
+        "ff_exposures": [],
+        "first_line": "PlayStation",
+        "item_id": 10771995596,
+        "second_line": "Muy bueno"
+      },
+      "photo": {
+        "dominant_color": "#624D47",
+        "dominant_color_opaque": "#D0CAC8",
+        "extra": {},
+        "full_size_url": "https://images1.vinted.net/tc/02_01356_ytduvnZBQeWdaCczZYimcHH5/9f0a07b4.webp?s=004bf1d7bb3e2c45a45fbe9bea4336c8486c995a",
+        "height": 800,
+        "high_resolution": {
+          "id": "02_01356_ytduvnZBQeWdaCczZYimcHH5",
+          "orientation": null
+        },
+        "id": 1,
+        "image_no": 1,
+        "is_main": true,
+        "thumbnails": [
+          {
+            "height": 100,
+            "original_size": null,
+            "type": "thumb70x100",
+            "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/70x100/9f0a07b4.webp?s=52fa2cfcd2061137a61ee61f5290f7d2d6a4852f",
+            "width": 70
+          },
+          {
+            "height": 210,
+            "original_size": null,
+            "type": "thumb150x210",
+            "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/150x210/9f0a07b4.webp?s=3f588a600be33ed19e39fb170b424e93c0065ea1",
+            "width": 150
+          },
+          {
+            "height": 430,
+            "original_size": null,
+            "type": "thumb310x430",
+            "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/310x430/9f0a07b4.webp?s=e786d4310f5cb31cbcc7f43e56e1f52e1f9580de",
+            "width": 310
+          },
+          {
+            "height": 428,
+            "original_size": true,
+            "type": "thumb428x624",
+            "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+            "width": 321
+          },
+          {
+            "height": 624,
+            "original_size": true,
+            "type": "thumb624x428",
+            "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+            "width": 468
+          },
+          {
+            "height": 364,
+            "original_size": true,
+            "type": "thumb364x428",
+            "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+            "width": 273
+          }
+        ],
+        "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+        "width": 600
+      },
+      "photos": [
+        {
+          "dominant_color": "#624D47",
+          "dominant_color_opaque": "#D0CAC8",
+          "extra": {},
+          "full_size_url": "https://images1.vinted.net/tc/02_01356_ytduvnZBQeWdaCczZYimcHH5/9f0a07b4.webp?s=004bf1d7bb3e2c45a45fbe9bea4336c8486c995a",
+          "height": 800,
+          "high_resolution": {
+            "id": "02_01356_ytduvnZBQeWdaCczZYimcHH5",
+            "orientation": null
+          },
+          "id": 1,
+          "image_no": 1,
+          "is_main": true,
+          "thumbnails": [
+            {
+              "height": 100,
+              "original_size": null,
+              "type": "thumb70x100",
+              "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/70x100/9f0a07b4.webp?s=52fa2cfcd2061137a61ee61f5290f7d2d6a4852f",
+              "width": 70
+            },
+            {
+              "height": 210,
+              "original_size": null,
+              "type": "thumb150x210",
+              "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/150x210/9f0a07b4.webp?s=3f588a600be33ed19e39fb170b424e93c0065ea1",
+              "width": 150
+            },
+            {
+              "height": 430,
+              "original_size": null,
+              "type": "thumb310x430",
+              "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/310x430/9f0a07b4.webp?s=e786d4310f5cb31cbcc7f43e56e1f52e1f9580de",
+              "width": 310
+            },
+            {
+              "height": 428,
+              "original_size": true,
+              "type": "thumb428x624",
+              "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+              "width": 321
+            },
+            {
+              "height": 624,
+              "original_size": true,
+              "type": "thumb624x428",
+              "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+              "width": 468
+            },
+            {
+              "height": 364,
+              "original_size": true,
+              "type": "thumb364x428",
+              "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+              "width": 273
+            }
+          ],
+          "url": "https://images1.vinted.net/t/02_01356_ytduvnZBQeWdaCczZYimcHH5/f800/9f0a07b4.webp?s=e75ae013d0f9e22e9a24628ab9da0ec88fed97e3",
+          "width": 600
+        }
+      ],
+      "price": {
+        "amount": "70.00",
+        "currency_code": "EUR"
+      },
+      "promoted": false,
+      "search_tracking_params": {
+        "score": 1.0021276473999023
+      },
+      "service_fee": {
+        "amount": "4.20",
+        "currency_code": "EUR"
+      },
+      "show_1st_time_seller_discount": false,
+      "title": "Ps2 slim",
+      "total_item_price": {
+        "amount": "74.20",
+        "currency_code": "EUR"
+      },
+      "url": "/items/10771995596-ps2-slim",
+      "user": {
+        "business": false,
+        "id": 3152706684,
+        "login": "clode134"
+      },
+      "view_count": 0
+    },
+    {
+      "content_source": "search_promoted_items",
+      "favourite_count": 0,
+      "id": 10771971444,
+      "is_favourite": false,
+      "item_box": {
+        "accessibility_label": "PlayStation 2 Fat scph-50004 più giochi, Marca: PlayStation, Estado: Bueno, 120.00 €, 126.70 €",
+        "exposures": [],
+        "ff_exposures": [],
+        "first_line": "PlayStation",
+        "item_id": 10771971444,
+        "second_line": "Bueno"
+      },
+      "photo": {
+        "dominant_color": "#7F8184",
+        "dominant_color_opaque": "#D9D9DA",
+        "extra": {},
+        "full_size_url": "https://images1.vinted.net/tc/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/be39f880.webp?s=9dfecb05333fdc6cc9f61da410e59d61176d3512",
+        "height": 800,
+        "high_resolution": {
+          "id": "01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4",
+          "orientation": null
+        },
+        "id": 1,
+        "image_no": 1,
+        "is_main": true,
+        "thumbnails": [
+          {
+            "height": 100,
+            "original_size": null,
+            "type": "thumb70x100",
+            "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/70x100/be39f880.webp?s=ff91b1e78711e9d91232a3e5902db29a1ab4257f",
+            "width": 70
+          },
+          {
+            "height": 210,
+            "original_size": null,
+            "type": "thumb150x210",
+            "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/150x210/be39f880.webp?s=e5adbbcb2627013e1a6f97a26af3a9fe45d21d63",
+            "width": 150
+          },
+          {
+            "height": 430,
+            "original_size": null,
+            "type": "thumb310x430",
+            "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/310x430/be39f880.webp?s=fa8fe90d86fc1885b2cfa7a614b793cbb3e12f32",
+            "width": 310
+          },
+          {
+            "height": 428,
+            "original_size": true,
+            "type": "thumb428x624",
+            "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+            "width": 321
+          },
+          {
+            "height": 624,
+            "original_size": true,
+            "type": "thumb624x428",
+            "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+            "width": 468
+          },
+          {
+            "height": 364,
+            "original_size": true,
+            "type": "thumb364x428",
+            "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+            "width": 273
+          }
+        ],
+        "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+        "width": 600
+      },
+      "photos": [
+        {
+          "dominant_color": "#7F8184",
+          "dominant_color_opaque": "#D9D9DA",
+          "extra": {},
+          "full_size_url": "https://images1.vinted.net/tc/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/be39f880.webp?s=9dfecb05333fdc6cc9f61da410e59d61176d3512",
+          "height": 800,
+          "high_resolution": {
+            "id": "01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4",
+            "orientation": null
+          },
+          "id": 1,
+          "image_no": 1,
+          "is_main": true,
+          "thumbnails": [
+            {
+              "height": 100,
+              "original_size": null,
+              "type": "thumb70x100",
+              "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/70x100/be39f880.webp?s=ff91b1e78711e9d91232a3e5902db29a1ab4257f",
+              "width": 70
+            },
+            {
+              "height": 210,
+              "original_size": null,
+              "type": "thumb150x210",
+              "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/150x210/be39f880.webp?s=e5adbbcb2627013e1a6f97a26af3a9fe45d21d63",
+              "width": 150
+            },
+            {
+              "height": 430,
+              "original_size": null,
+              "type": "thumb310x430",
+              "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/310x430/be39f880.webp?s=fa8fe90d86fc1885b2cfa7a614b793cbb3e12f32",
+              "width": 310
+            },
+            {
+              "height": 428,
+              "original_size": true,
+              "type": "thumb428x624",
+              "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+              "width": 321
+            },
+            {
+              "height": 624,
+              "original_size": true,
+              "type": "thumb624x428",
+              "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+              "width": 468
+            },
+            {
+              "height": 364,
+              "original_size": true,
+              "type": "thumb364x428",
+              "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+              "width": 273
+            }
+          ],
+          "url": "https://images1.vinted.net/t/01_00b8c_Jv6ZzRmDqsCe3M6uyUupSUA4/f800/be39f880.webp?s=2dd9bb195b61b804b8c80aac191ddddc0ef6541c",
+          "width": 600
+        }
+      ],
+      "price": {
+        "amount": "120.00",
+        "currency_code": "EUR"
+      },
+      "promoted": true,
+      "search_tracking_params": {
+        "score": 0.5008620619773865
+      },
+      "service_fee": {
+        "amount": "6.70",
+        "currency_code": "EUR"
+      },
+      "show_1st_time_seller_discount": false,
+      "title": "PlayStation 2 Fat scph-50004 più giochi",
+      "total_item_price": {
+        "amount": "126.70",
+        "currency_code": "EUR"
+      },
+      "url": "/items/10771971444-playstation-2-fat-scph-50004-piu-giochi",
+      "user": {
+        "business": false,
+        "id": 311188831,
+        "login": "dany00003"
+      },
+      "view_count": 0
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "per_page": 2,
+    "time": 1794438593,
+    "total_entries": 960,
+    "total_pages": 480
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "data": {
+    "section": {
+      "type": "organic_search_results",
+      "payload": {
+        "items": [
+          {
+            "id": "xzogyrym1wj9",
+            "user_id": "v6g41lw8em6e",
+            "title": "Lote de 10 Juegos para PlayStation 2",
+            "description": "Colección de diez títulos para la consola PlayStation 2.\n\n- SingStar\n- The Getaway\n- MX Unleashed\n- Star Wars Battlefront\n- 007 Nightfire\n- Age of Empires II: The Age of Kings\n- Medal of Honor Frontline\n- WRC Extreme\n- Pro Evolution Soccer 2\n- Un título adicional con caja genérica",
+            "category_id": 24200,
+            "price": {
+              "amount": 7.0,
+              "currency": "EUR"
+            },
+            "images": [
+              {
+                "id": "36edv2k2dw8j",
+                "average_color": "13C1AC",
+                "urls": {
+                  "small": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436381/i6861086839.jpg?pictureSize=W320",
+                  "medium": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436381/i6861086839.jpg?pictureSize=W640",
+                  "big": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436381/i6861086839.jpg?pictureSize=W800"
+                }
+              },
+              {
+                "id": "vjrkx080kdxz",
+                "average_color": "13C1AC",
+                "urls": {
+                  "small": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436381/i6861086843.jpg?pictureSize=W320",
+                  "medium": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436381/i6861086843.jpg?pictureSize=W640",
+                  "big": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436381/i6861086843.jpg?pictureSize=W800"
+                }
+              }
+            ],
+            "reserved": {
+              "flag": true
+            },
+            "location": {
+              "latitude": 40.45751707979195,
+              "longitude": -3.47398882013767,
+              "postal_code": "28850",
+              "city": "Torrejón de Ardoz",
+              "region": "Comunidad de Madrid",
+              "region2": "Madrid",
+              "country_code": "ES"
+            },
+            "shipping": {
+              "item_is_shippable": true,
+              "user_allows_shipping": true
+            },
+            "favorited": {
+              "flag": false
+            },
+            "bump": {
+              "type": "none"
+            },
+            "web_slug": "lote-de-10-juegos-para-playstation-2-1323436381",
+            "created_at": 1794437984928,
+            "modified_at": 1794438468584,
+            "taxonomy": [
+              {
+                "id": 24200,
+                "name": "Technology & electronics",
+                "icon": "robot"
+              },
+              {
+                "id": 24203,
+                "name": "Gaming: consoles & video games",
+                "icon": null
+              },
+              {
+                "id": 24131,
+                "name": "Video games & more",
+                "icon": null
+              },
+              {
+                "id": 10093,
+                "name": "Video games",
+                "icon": null
+              }
+            ],
+            "is_favoriteable": {
+              "flag": true
+            },
+            "is_refurbished": {
+              "flag": false
+            },
+            "is_top_profile": {
+              "flag": false
+            },
+            "has_warranty": {
+              "flag": false
+            }
+          },
+          {
+            "id": "wzyrm5mp0e65",
+            "user_id": "3zlg9lokopjx",
+            "title": "🇪🇦Crimson Desert (PS5) Day One Edition",
+            "description": "❌NO REGATEOS (ni por packs).\n❌No reservas. \n❌No cambios.\n☠️Si no respetas estos límites directamente te bloqueo.\n\n⚠️Edición española. Como nuevo, completo y con el disco impecable.\n\n✅Envío muy bien embalado mediante wallapop o certificado 4.50€ (Canarias 8.50€).\n\n✅Pagos por wallapay, bizum o paypal sin comisiones (familiares/amigos).\n\n✅Hago entregas en mano. Pago sólo en efectivo.",
+            "category_id": 24200,
+            "price": {
+              "amount": 40.0,
+              "currency": "EUR"
+            },
+            "images": [
+              {
+                "id": "wzvr3181r946",
+                "average_color": "13C1AC",
+                "urls": {
+                  "small": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086789.jpg?pictureSize=W320",
+                  "medium": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086789.jpg?pictureSize=W640",
+                  "big": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086789.jpg?pictureSize=W800"
+                }
+              },
+              {
+                "id": "wzyl9383lex6",
+                "average_color": "13C1AC",
+                "urls": {
+                  "small": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086792.jpg?pictureSize=W320",
+                  "medium": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086792.jpg?pictureSize=W640",
+                  "big": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086792.jpg?pictureSize=W800"
+                }
+              },
+              {
+                "id": "e65vew5wvm2j",
+                "average_color": "13C1AC",
+                "urls": {
+                  "small": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086796.jpg?pictureSize=W320",
+                  "medium": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086796.jpg?pictureSize=W640",
+                  "big": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086796.jpg?pictureSize=W800"
+                }
+              },
+              {
+                "id": "e65vew5wvmkj",
+                "average_color": "13C1AC",
+                "urls": {
+                  "small": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086800.jpg?pictureSize=W320",
+                  "medium": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086800.jpg?pictureSize=W640",
+                  "big": "https://cdn.wallapop.com/images/10420/lv/xu/__/c10420p1323436368/i6861086800.jpg?pictureSize=W800"
+                }
+              }
+            ],
+            "reserved": {
+              "flag": false
+            },
+            "location": {
+              "latitude": 40.32583953731415,
+              "longitude": -3.7412044496258257,
+              "postal_code": "28907",
+              "city": "Getafe",
+              "region": "Comunidad de Madrid",
+              "region2": "Madrid",
+              "country_code": "ES"
+            },
+            "shipping": {
+              "item_is_shippable": true,
+              "user_allows_shipping": true
+            },
+            "favorited": {
+              "flag": false
+            },
+            "bump": {
+              "type": "none"
+            },
+            "web_slug": "crimson-desert-ps5-day-one-edition-1323436368",
+            "created_at": 1794437979298,
+            "modified_at": 1794437994879,
+            "taxonomy": [
+              {
+                "id": 24200,
+                "name": "Technology & electronics",
+                "icon": "robot"
+              },
+              {
+                "id": 24203,
+                "name": "Gaming: consoles & video games",
+                "icon": null
+              },
+              {
+                "id": 24131,
+                "name": "Video games & more",
+                "icon": null
+              },
+              {
+                "id": 10093,
+                "name": "Video games",
+                "icon": null
+              }
+            ],
+            "is_favoriteable": {
+              "flag": true
+            },
+            "is_refurbished": {
+              "flag": false
+            },
+            "is_top_profile": {
+              "flag": true
+            },
+            "has_warranty": {
+              "flag": false
+            }
+          }
+        ]
+      }
+    }
+  }
+}

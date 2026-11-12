@@ -4,6 +4,12 @@ Todas las versiones notables de este proyecto se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el versionado [SemVer](https://semver.org/lang/es/).
 
+## [1.1.0] - 2026-11-12
+
+### Cambios
+
+- Simplifica el despliegue: elimina Fly, VPS, proxies y curl_cffi
+
 ## [1.0.0] - 2026-11-12
 
 ### Añadido

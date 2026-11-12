@@ -15,6 +15,7 @@ from db import Database
 from notifier import Notifier
 from scheduler import Tracker
 from sources import VintedSource, WallapopSource
+from version import __version__
 
 logger = logging.getLogger("bot_tracker")
 
@@ -113,7 +114,7 @@ def main() -> None:
     app.bot_data["settings"] = settings
     register_handlers(app, settings)
 
-    logger.info("Arrancando el bot…")
+    logger.info("Arrancando el bot v%s…", __version__)
     app.run_polling(
         allowed_updates=["message", "callback_query"],
         drop_pending_updates=True,

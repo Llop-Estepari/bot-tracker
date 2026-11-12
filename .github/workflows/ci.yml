@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests y lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest -q
+
+  version:
+    name: Control de versión
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: El tag coincide con version.py
+        if: github.ref_type == 'tag'
+        run: python scripts/check_version.py "${GITHUB_REF_NAME}"
+
+      - name: Cada cambio sube la versión
+        if: github.ref_type == 'branch'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$BASE_SHA"
+            HEAD="HEAD"
+          else
+            BASE="$BEFORE_SHA"
+            HEAD="$HEAD_SHA"
+            if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              echo "Push inicial de rama; se omite el control."
+              exit 0
+            fi
+          fi
+
+          echo "Comparando $BASE..$HEAD"
+          if git diff --name-only "$BASE" "$HEAD" | grep -qx 'version.py'; then
+            echo "✅ version.py actualizado"
+          else
+            echo "❌ Este cambio no sube la versión. Usa scripts/release.py." >&2
+            exit 1
+          fi

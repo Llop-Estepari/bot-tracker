@@ -101,7 +101,7 @@ El asistente pide, paso a paso:
 | `/avanzado <id> clave=valor` | Categorías, marcas y estado (IDs de las webs) |
 | `/pausar <id>` / `/reanudar <id>` | Pausar o reactivar |
 | `/borrar <id>` | Eliminar (con confirmación) |
-| `/estado` | Uptime, búsquedas y avisos registrados |
+| `/estado` | Versión, uptime, búsquedas y avisos registrados |
 | `/ayuda` | Ayuda |
 
 ### Editar filtros
@@ -306,22 +306,46 @@ tmux new -s bot '.venv/bin/python main.py 2>&1 | tee -a bot.log'
 # salir sin matar el bot: Ctrl+B, D
 ```
 
-### Actualizar una instalación existente
+### Conectar el móvil al repositorio (una sola vez)
 
-La primera vez (o si todavía no existe `deploy/termux-update.sh`):
+El repositorio es privado. Crea una **deploy key de solo lectura** en Termux:
 
 ```bash
-tmux kill-session -t bot 2>/dev/null || true
-cd ~/bot-tracker
-cp tracker.db ~/tracker-backup-$(date +%F-%H%M).db
-cp .env ~/.env-backup-$(date +%F-%H%M)
-git pull --ff-only
-.venv/bin/pip install -r requirements-termux.txt
-tmux new-session -d -s bot \
-  "cd '$HOME/bot-tracker' && exec .venv/bin/python main.py >> bot.log 2>&1"
+pkg install -y openssh
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+ssh-keygen -t ed25519 -C "termux-bot" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub
 ```
 
-A partir de ahí, las siguientes actualizaciones se hacen con:
+Añade esa clave pública al repositorio como deploy key de solo lectura (sin
+`--allow-write`):
+
+```bash
+gh repo deploy-key add clave-publica.pub --title "Termux" \
+  -R Llop-Estepari/bot-tracker
+```
+
+Configura SSH y convierte la instalación existente en un clon conservando
+`.env` y `tracker.db`:
+
+```bash
+cat > ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+
+cd ~/bot-tracker
+git init
+git remote add origin git@github.com:Llop-Estepari/bot-tracker.git
+git fetch origin
+git reset --hard origin/main
+```
+
+`.env`, `tracker.db` y `.venv` están en `.gitignore` y no se tocan.
+
+### Actualizar
 
 ```bash
 bash ~/bot-tracker/deploy/termux-update.sh
@@ -331,11 +355,7 @@ El script para el bot, guarda copias con fecha de `tracker.db` y `.env` en
 `~/bot-tracker-backups/`, hace `git pull --ff-only`, instala dependencias solo
 si cambiaron los `requirements`, valida que el código compila, reinicia en
 `tmux` y vuelve al commit anterior si algo falla. Nunca toca `.env`, `.venv`,
-`tracker.db` ni `bot.log`.
-
-Si el móvil no es un clon de Git, `git status` fallará: vuelve a clonar el
-repositorio conservando `.env` y `tracker.db`, o usa la copia por `adb` del
-apartado anterior.
+`tracker.db` ni `bot.log`. Muestra la versión antes y después de actualizar.
 
 ### Persistencia y batería
 
@@ -364,7 +384,58 @@ fly machine start <id-de-la-maquina> -a vinpop-bot
 Sincroniza `tracker.db` en la dirección del nuevo host si quieres conservar
 las búsquedas y los anuncios vistos.
 
-## 9. Desarrollo y tests
+## 9. Versiones y releases
+
+La versión vive en `version.py` (única fuente de verdad) y se muestra en
+`/estado` y en el log de arranque.
+
+### Política de versiones
+
+| Tipo | Cuándo | Ejemplo |
+| --- | --- | --- |
+| **PATCH** | Arreglos, documentación, dependencias | `1.0.1` |
+| **MINOR** | Nueva funcionalidad, comandos o filtros | `1.1.0` |
+| **MAJOR** | Cambios incompatibles (config, BD, comandos) | `2.0.0` |
+
+Ningún cambio llega a `main` sin subir `version.py` y sin entrada en
+`CHANGELOG.md`.
+
+### Publicar una versión
+
+```bash
+python scripts/release.py patch "Corrige el filtrado de palabras"
+python scripts/release.py minor "Añade el comando /version"
+python scripts/release.py major "Cambia el formato de configuración"
+```
+
+El script ejecuta ruff y los tests, sube la versión, añade la entrada al
+changelog, crea el commit `release: vX.Y.Z`, el tag `vX.Y.Z` y empuja todo a
+GitHub. `--dry-run` muestra el resultado sin tocar nada y `--no-push` deja el
+commit y el tag en local.
+
+### Comprobaciones
+
+```bash
+python scripts/check_version.py          # SemVer, fecha y changelog
+python scripts/check_version.py v1.0.0   # además, que el tag coincida
+```
+
+La CI (`.github/workflows/ci.yml`):
+
+- ejecuta `ruff` y `pytest` en cada push/PR;
+- falla si un cambio no modifica `version.py`;
+- en tags `v*`, verifica que el tag coincide con `version.py`.
+
+No se crean GitHub Releases: el historial vive en `CHANGELOG.md` y en los tags.
+
+### Actualizar los hosts
+
+- **Móvil/Termux**: `bash ~/bot-tracker/deploy/termux-update.sh` (hace
+  `git pull`, instala dependencias si cambiaron y reinicia).
+- **Fly.io** (solo si vuelves a usarlo): `fly deploy -a vinpop-bot`.
+- Comprueba con `/estado` que aparece la nueva versión.
+
+## 10. Desarrollo y tests
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
@@ -375,7 +446,7 @@ Los tests cubren filtros, parseo de respuestas reales de ambas plataformas,
 persistencia y la lógica del scheduler (siembra inicial, deduplicación,
 límites de avisos) con fuentes simuladas. No hacen peticiones de red.
 
-## 10. Problemas frecuentes
+## 11. Problemas frecuentes
 
 **Wallapop responde 403 (Request blocked)**
 El WAF de CloudFront ha bloqueado la IP. El bot enfriará esa plataforma 15
@@ -409,7 +480,7 @@ VINTED_BASE_URL=https://www.vinted.fr
 VINTED_LOCALE=fr-FR
 ```
 
-## 11. Estructura del proyecto
+## 12. Estructura del proyecto
 
 ```text
 main.py              Arranque: Telegram + scheduler
@@ -430,7 +501,7 @@ fly.toml             Worker + volumen persistente en Fly.io
 requirements-termux.txt  Dependencias sin curl_cffi para Android
 ```
 
-## 12. Aviso legal
+## 13. Aviso legal
 
 Este proyecto es de uso personal y no está afiliado a Wallapop ni a Vinted.
 Automatizar el acceso puede ir contra sus términos de servicio. El bot está

@@ -42,9 +42,16 @@ cd "$DEST"
 mkdir -p "$BACKUPS"
 exec > >(tee -a "$DEST/update.log") 2>&1
 
+project_version() {
+    sed -n 's/^__version__ = "\(.*\)"/\1/p' version.py 2>/dev/null | head -1
+}
+
+CURRENT_VERSION="$(project_version)"
+
 echo "== Bot tracker: actualización en Termux =="
 date
 echo "proyecto: $DEST"
+echo "versión actual: ${CURRENT_VERSION:-desconocida}"
 echo
 
 abort() {
@@ -124,11 +131,13 @@ echo "== 3/5 Actualizando código =="
 git fetch --all --prune
 git pull --ff-only
 AFTER="$(git rev-parse HEAD)"
+NEW_VERSION="$(project_version)"
 if [ "$BEFORE" = "$AFTER" ]; then
     echo "Ya estabas en la última versión ($AFTER)."
 else
     echo "Actualizado: $BEFORE -> $AFTER"
 fi
+echo "versión tras el pull: ${NEW_VERSION:-desconocida}"
 
 echo
 echo "== 4/5 Dependencias y validación =="
@@ -156,6 +165,7 @@ STOPPED=0
 
 echo
 echo "✅ Actualización completada."
+echo "Versión: ${NEW_VERSION:-desconocida}"
 echo "Backups: $BACKUPS"
 echo "Log del bot: $DEST/bot.log"
 echo

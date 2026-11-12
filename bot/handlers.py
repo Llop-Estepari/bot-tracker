@@ -27,6 +27,7 @@ from db import Alert, Database, NewAlert
 from filters import format_price, parse_price, parse_price_range
 from geocode import GeocodeError, geocode
 from notifier import Notifier
+from version import __release_date__, __version__
 
 if TYPE_CHECKING:
     from config import Settings
@@ -310,7 +311,7 @@ async def parse_location_input(
 async def help_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    await send_long(update, HELP_TEXT)
+    await send_long(update, f"{HELP_TEXT}\n\n<i>v{__version__}</i>")
 
 
 async def list_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -393,13 +394,10 @@ async def delete_alert(
     )
 
 
-async def status_command(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    stats = await _db(context).stats()
-    status = _tracker(context).status()
+def format_status(stats: dict[str, int], status: dict[str, object]) -> str:
     lines = [
         "🤖 <b>Estado</b>",
+        f"🧩 Versión: <b>v{__version__}</b> · {__release_date__}",
         f"⏳ Activo desde hace {format_uptime(int(status['uptime_seconds']))}",
         f"🔎 {stats['active_alerts']} búsquedas activas de {stats['alerts']}",
         f"👁 {stats['seen_items']} anuncios registrados",
@@ -411,7 +409,15 @@ async def status_command(
             for platform, seconds in dict(cooldowns).items()
         )
         lines.append(f"🚧 Enfriando por límites: {text}")
-    await send_long(update, "\n".join(lines))
+    return "\n".join(lines)
+
+
+async def status_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    stats = await _db(context).stats()
+    status = _tracker(context).status()
+    await send_long(update, format_status(stats, status))
 
 
 # --------------------------------------------------------------------------- #

@@ -128,8 +128,13 @@ fi
 
 echo
 echo "== 3/5 Actualizando código =="
+echo "rama actual: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo desconocida)"
 git fetch --all --prune
-git pull --ff-only
+# Garantiza la rama main y el commit exacto de origin/main, aunque la copia
+# local esté en master, en detached HEAD o sin upstream configurado.
+git checkout -B main origin/main
+git branch --set-upstream-to=origin/main main >/dev/null 2>&1 || true
+echo "rama tras actualizar: $(git rev-parse --abbrev-ref HEAD)"
 AFTER="$(git rev-parse HEAD)"
 NEW_VERSION="$(project_version)"
 if [ "$BEFORE" = "$AFTER" ]; then

@@ -258,13 +258,19 @@ EOF
 chmod 600 ~/.ssh/config
 
 cd ~/bot-tracker
-git init
-git remote add origin git@github.com:Llop-Estepari/bot-tracker.git
+git init -b main
+git remote add origin git@github.com:Llop-Estepari/bot-tracker.git 2>/dev/null \
+  || git remote set-url origin git@github.com:Llop-Estepari/bot-tracker.git
 git fetch origin
-git reset --hard origin/main
+git checkout -B main origin/main
+git branch --set-upstream-to=origin/main main
 ```
 
 `.env`, `tracker.db` y `.venv` están en `.gitignore` y no se tocan.
+
+Si ya tenías el clon en otra rama (por ejemplo `master`) o en detached HEAD,
+los dos últimos comandos lo pasan a `main` con upstream; a partir de ahí
+`deploy/termux-update.sh` funciona siempre.
 
 ### Actualizar
 

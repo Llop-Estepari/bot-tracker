@@ -1,17 +1,19 @@
 # Bot tracker de Wallapop y Vinted → Telegram
 
-Bot personal que vigila búsquedas en **Wallapop** y **Vinted** y te avisa por
-Telegram en cuanto aparece un anuncio nuevo que encaja con tus filtros.
+Bot que vigila búsquedas en **Wallapop** y **Vinted** y te avisa por Telegram
+en cuanto aparece un anuncio nuevo que encaja con tus filtros. Se instala y se
+ejecuta **íntegramente en un móvil Android** con Termux: ni ordenador, ni
+cable, ni servidor.
 
 - Filtros por palabras clave, precio, envío y distancia (Wallapop), marcas,
   categorías y estado (Vinted).
 - Palabras excluidas y **modo estricto** para eliminar resultados irrelevantes.
 - Cada búsqueda tiene su propio intervalo (60 s – 1 h, por defecto 90 s).
 - Deduplicación en SQLite: nunca recibes dos veces el mismo anuncio.
-- Aviso de **bajada de precio** cuando un anuncio ya visto se abarata
-  (activable por búsqueda).
+- Aviso de **bajada de precio** cuando un anuncio ya visto se abarata.
 - Avisos con foto, precio, ubicación, distancia y país, con botón para
   silenciar la búsqueda.
+- Servicio **runit**: si el proceso cae, se levanta solo; arranca con el móvil.
 - Todo se gestiona desde el chat: no hay que editar archivos para cambiar
   filtros.
 
@@ -20,58 +22,122 @@ Telegram en cuanto aparece un anuncio nuevo que encaja con tus filtros.
 > peticiones en cualquier momento; el código está aislado en `sources/` para
 > adaptarlo rápido. Úsalo de forma moderada y respeta sus términos de uso.
 
+## Índice
+
+1. [Instalación rápida en Android](#1-instalación-rápida-en-android)
+2. [Uso](#2-uso)
+3. [Mantenimiento](#3-mantenimiento)
+4. [Cómo funciona](#4-cómo-funciona)
+5. [Desarrollo local](#5-desarrollo-local)
+6. [Versiones y releases](#6-versiones-y-releases)
+7. [Problemas frecuentes](#7-problemas-frecuentes)
+8. [Estructura del proyecto](#8-estructura-del-proyecto)
+9. [Aviso legal](#9-aviso-legal)
+
 ---
 
-## 1. Requisitos
+## 1. Instalación rápida en Android
 
-- Linux (probado en Python 3.14; funciona desde 3.11)
-- Un bot de Telegram (se crea gratis con [@BotFather](https://t.me/BotFather))
-- Un móvil Android con Termux para el hosting 24/7 (ver sección 6)
+La instalación completa se hace desde el propio móvil en unos 5 minutos.
 
-## 2. Instalación local
+### 1.1 Qué necesitas
+
+En el móvil:
+
+| App | Enlace | Para qué |
+| --- | --- | --- |
+| F-Droid | https://f-droid.org | Instalar Termux |
+| Termux | https://f-droid.org/packages/com.termux/ | Ejecutar el bot |
+| Termux:Boot | https://f-droid.org/packages/com.termux.boot/ | Arrancar tras reiniciar |
+| Termux:Widget | https://f-droid.org/packages/com.termux.widget/ | Atajos (opcional) |
+
+> Instala siempre Termux desde **F-Droid**, no desde Play Store: la versión de
+> Play está descontinuada y no funciona igual.
+
+Además: Telegram, Wi-Fi, el móvil enchufado y Android 7 o superior.
+
+### 1.2 Crear tu bot de Telegram (una vez, 30 s)
+
+1. Abre Telegram y busca **@BotFather**.
+2. Envía `/newbot`.
+3. Elige un nombre (ej. *Mi tracker*) y un usuario que termine en `bot`
+   (ej. `mi_tracker_2026_bot`).
+4. Copia el **token** (`123456789:AA...`). No lo compartas.
+
+No hace falta nada más: el instalador valida el token y detecta tu chat
+automáticamente cuando pulsas **Start**.
+
+> **¿Puedo compartir un bot entre varios móviles?** No. Un token de Telegram
+> solo admite un proceso escuchando a la vez; si dos móviles lo usan, los
+> avisos se mezclan. Cada usuario debe crear su bot (30 s) y alojarlo en su
+> propio teléfono.
+
+### 1.3 Instalar con una línea
+
+Abre **Termux** y pega:
 
 ```bash
-cd bot-tracker
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-cp .env.example .env
+bash <(curl -fsSL https://raw.githubusercontent.com/Llop-Estepari/bot-tracker/main/install.sh)
 ```
 
-Edita `.env` y pon al menos el token:
+El instalador:
 
-```env
-TELEGRAM_BOT_TOKEN=123456789:AAEjemploDeTokenDeBotFather
-```
+1. instala `python`, `git`, `curl`, `tmux` y `termux-services`;
+2. clona el repositorio público en `~/bot-tracker`;
+3. crea el entorno virtual e instala las dependencias;
+4. pide el **token enmascarado** y lo valida con Telegram;
+5. te muestra `https://t.me/tu_bot`: pulsa **Start** y detecta tu **chat_id**;
+6. escribe `.env` con permisos `600`;
+7. registra el servicio **runit** y el arranque con Termux:Boot;
+8. arranca, comprueba `sv status bot` y verifica la versión en el log.
 
-Arranca el bot:
+Al terminar verás tu enlace de bot, la versión instalada, el diagnóstico
+disponible y los ajustes de batería que faltan.
+
+**Si no detecta tu chat_id**, envía `/start` al bot y repite la misma línea (es
+idempotente), o fíjalo a mano:
 
 ```bash
-.venv/bin/python main.py
+bash ~/bot-tracker/deploy/phone-config.sh --chat-id 123456789 --restart
 ```
 
-## 3. Autorizarte (whitelist)
+### 1.4 Ajustes obligatorios en HyperOS/MIUI
 
-El bot es privado: solo responde a los `chat_id` de `ALLOWED_CHAT_IDS`.
+Sin esto, Xiaomi terminará matando el proceso:
 
-1. Con el bot arrancado, escribe `/start` desde tu Telegram.
-2. El bot te responderá con **tu chat_id** y te dirá que no tienes acceso.
-3. Añádelo al `.env`:
+- Ajustes → Aplicaciones → **Termux** → **Batería** → *Sin restricciones*.
+- Ajustes → Aplicaciones → **Termux** → **Inicio automático** → activar.
+- Recientes → mantén Termux → **candado**.
+- Desactiva el ahorro de energía agresivo del sistema.
 
-   ```env
-   ALLOWED_CHAT_IDS=123456789
-   ```
+Abre **Termux:Boot una vez** (su icono) para que registre el arranque
+automático. Recomendado: móvil enchufado y, si existe, límite de carga al 80 %.
 
-4. Reinicia el bot. Escribe `/ayuda` y ya podrás crear búsquedas.
+### 1.5 Comprobar que funciona
 
-Puedes autorizar a más personas separando IDs por comas.
-Si dejas `ALLOWED_CHAT_IDS` vacío, el bot rechazará a todo el mundo (es el
-comportamiento seguro por defecto).
+En Telegram:
 
-## 4. Uso
+```text
+/estado     → versión, uptime y búsquedas
+/nuevo      → crear la primera búsqueda
+/ubicacion  → origen para el filtro de distancia
+```
+
+En Termux:
+
+```bash
+sv status bot
+bash ~/bot-tracker/deploy/phone-doctor.sh
+tail -n 50 ~/bot-tracker/logs/current
+```
+
+---
+
+## 2. Uso
 
 ### Crear una búsqueda
 
-```
+```text
 /nuevo
 ```
 
@@ -192,119 +258,11 @@ aparece como `?catalog[]=1904`):
 
 Usa `-` como valor para borrar un filtro.
 
-## 5. Cómo funciona
+---
 
-- Un scheduler en segundo plano revisa cada alerta según su intervalo, con un
-  pequeño *jitter* y unos segundos de separación entre búsquedas.
-- La primera pasada de una alerta **siembra** los anuncios existentes sin
-  avisar (salvo que hayas pedido lo contrario), para que no recibas un aluvión
-  inicial.
-- Cada anuncio se guarda en `seen_items`: si ya se avisó, no se repite.
-- Si un anuncio ya visto **baja de precio**, se envía un aviso aparte con el
-  precio anterior y el nuevo. Se puede desactivar por búsqueda con
-  `/editar <id> precios off`. Solo se detecta mientras el anuncio siga
-  apareciendo en los resultados y siga cumpliendo los filtros; las APIs
-  devuelven las primeras posiciones ordenadas por novedad, así que un anuncio
-  muy antiguo puede salir de esa ventana.
-- Filtros server-side: palabras, precio, envío (Wallapop), distancia
-  (Wallapop), categoría, marca y estado.
-- Filtros client-side: modo estricto, palabras excluidas, comprobación
-  defensiva de precio y de radio (haversine).
-- Ante `429` la plataforma se enfría 3 minutos; ante `403` (bloqueo), 15
-  minutos. El resto de plataformas siguen funcionando.
-- Wallapop se consulta con `httpx` y las cabeceras de su web; si responde 403, la plataforma se enfría.
-- Vinted exige cookies de sesión: el bot visita la web, las guarda y las
-  renueva automáticamente si caducan.
+## 3. Mantenimiento
 
-## 6. Instalación en Android (solo desde el móvil)
-
-El bot se instala y se ejecuta **íntegramente en el móvil**: no hace falta
-ordenador, cable USB ni ADB. Cada persona que quiera su bot crea el suyo en
-Telegram (30 segundos) y lo aloja en su propio teléfono.
-
-### 6.1 Lo que necesitas
-
-En el móvil:
-
-| App | Enlace | Para qué |
-| --- | --- | --- |
-| F-Droid | https://f-droid.org | Instalar Termux |
-| Termux | https://f-droid.org/packages/com.termux/ | Ejecutar el bot |
-| Termux:Boot | https://f-droid.org/packages/com.termux.boot/ | Arrancar tras reiniciar |
-| Termux:Widget | https://f-droid.org/packages/com.termux.widget/ | Atajos (opcional) |
-
-> Instala siempre Termux desde **F-Droid**, no desde Play Store: la versión de
-> Play está descontinuada.
-
-Además: Wi-Fi, el móvil enchufado y Android 7+.
-
-### 6.2 Crear el bot de Telegram (una vez, 30 s)
-
-1. Abre Telegram y busca **@BotFather**.
-2. Envía `/newbot`.
-3. Elige un nombre (ej. *Mi tracker*) y un usuario que termine en `bot`
-   (ej. `mi_tracker_2026_bot`).
-4. Copia el **token** (`123456789:AA...`). No lo compartas.
-
-No necesitas crear nada más: el instalador validará el token y detectará tu
-chat automáticamente cuando pulses Start.
-
-### 6.3 Instalar
-
-Abre **Termux** y pega esta única línea:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Llop-Estepari/bot-tracker/main/install.sh)
-```
-
-El instalador:
-
-1. instala `python`, `git`, `curl`, `tmux` y `termux-services`;
-2. clona el repositorio público en `~/bot-tracker`;
-3. crea el entorno virtual e instala las dependencias;
-4. pide el **token enmascarado** y lo valida con Telegram;
-5. te muestra el enlace `https://t.me/tu_bot` y, cuando pulsas **Start**,
-   detecta tu **chat_id** automáticamente;
-6. escribe `.env` con permisos `600`;
-7. registra el servicio **runit** y el arranque con Termux:Boot;
-8. arranca, comprueba `sv status bot` y verifica la versión en el log.
-
-Al terminar verás tu enlace de bot, la versión instalada y los pasos de batería
-que faltan.
-
-**Si no detecta tu chat_id**: envía `/start` al bot y vuelve a ejecutar la
-misma línea (es idempotente), o fija el id a mano:
-
-```bash
-bash ~/bot-tracker/deploy/phone-config.sh --chat-id 123456789 --restart
-```
-
-### 6.4 Ajustes obligatorios en HyperOS/MIUI
-
-Sin esto, Xiaomi terminará matando el proceso:
-
-- Ajustes → Aplicaciones → **Termux** → **Batería** → *Sin restricciones*.
-- Ajustes → Aplicaciones → **Termux** → **Inicio automático** → activar.
-- Recientes → mantén Termux → **candado**.
-- Desactiva el ahorro de energía agresivo del sistema.
-
-Abre **Termux:Boot una vez** (su icono) para que registre el arranque
-automático. Recomendado: móvil enchufado y, si existe, límite de carga al 80 %.
-
-### 6.5 Comprobar y usar
-
-En Telegram: `/estado` (versión y uptime), `/nuevo` (crear búsqueda),
-`/ubicacion` (origen para el filtro de distancia).
-
-En Termux:
-
-```bash
-sv status bot
-bash ~/bot-tracker/deploy/phone-doctor.sh
-tail -n 50 ~/bot-tracker/logs/current
-```
-
-### 6.6 Actualizar
+### Actualizar
 
 Un toque en el widget **Actualizar bot** (Termux:Widget) o:
 
@@ -312,10 +270,29 @@ Un toque en el widget **Actualizar bot** (Termux:Widget) o:
 bash ~/bot-tracker/update.sh
 ```
 
-El script baja el servicio runit, guarda backups, actualiza, arranca y verifica
-la nueva versión. Si algo falla, vuelve al commit anterior.
+El script baja el servicio runit, guarda un backup de `.env`, `tracker.db` y
+del worktree, actualiza el código, instala dependencias si cambiaron, arranca y
+verifica la nueva versión. Si algo falla, vuelve al commit anterior.
 
-### 6.7 Copias de seguridad y cambio de móvil
+### Diagnóstico
+
+```bash
+bash ~/bot-tracker/deploy/phone-doctor.sh
+```
+
+Comprueba servicio, proceso, arranque automático, batería, red, logs y disco.
+
+### Logs
+
+```bash
+tail -n 50 ~/bot-tracker/logs/current
+tail -f ~/bot-tracker/logs/current     # en vivo
+sv status bot
+```
+
+Los logs rotan solos: 5 MB por fichero y 3 ficheros.
+
+### Copias de seguridad y cambio de móvil
 
 ```bash
 termux-setup-storage
@@ -332,7 +309,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Llop-Estepari/bot-tracker/ma
   --db ~/storage/shared/bot-tracker-2026-11-13.db
 ```
 
-### 6.8 Reparar o reinstalar
+### Reparar o reinstalar
 
 El instalador es idempotente y nunca borra `.env`, `tracker.db` ni `.venv`:
 
@@ -340,40 +317,106 @@ El instalador es idempotente y nunca borra `.env`, `tracker.db` ni `.venv`:
 bash <(curl -fsSL https://raw.githubusercontent.com/Llop-Estepari/bot-tracker/main/install.sh)
 ```
 
-### 6.9 Desinstalar
+### Desinstalar
 
 ```bash
 bash ~/bot-tracker/deploy/phone-uninstall.sh          # conserva los datos
 bash ~/bot-tracker/deploy/phone-uninstall.sh --purge  # borra también el proyecto
 ```
 
-### 6.10 Problemas frecuentes del hosting
+---
 
-**El token no es válido**
-Cópialo entero desde @BotFather (`/mybots` → tu bot → API Token). Debe tener el
-formato `123456789:AA...`.
+## 4. Cómo funciona
 
-**No detecta mi chat_id**
-Abre `https://t.me/tu_bot`, pulsa **Start** y repite el instalador. También
-puedes usar `phone-config.sh --chat-id`.
+- Un scheduler en segundo plano revisa cada alerta según su intervalo, con un
+  pequeño *jitter* y unos segundos de separación entre búsquedas.
+- La primera pasada de una alerta **siembra** los anuncios existentes sin
+  avisar (salvo que hayas pedido lo contrario), para que no recibas un aluvión
+  inicial.
+- Cada anuncio se guarda en `seen_items`: si ya se avisó, no se repite.
+- Si un anuncio ya visto **baja de precio**, se envía un aviso aparte con el
+  precio anterior y el nuevo. Se desactiva por búsqueda con
+  `/editar <id> precios off`. Solo se detecta mientras el anuncio siga
+  apareciendo en los resultados y cumpla los filtros; las APIs devuelven las
+  primeras posiciones ordenadas por novedad.
+- Filtros server-side: palabras, precio, envío (Wallapop), distancia
+  (Wallapop), categoría, marca y estado.
+- Filtros client-side: modo estricto, palabras excluidas, comprobación
+  defensiva de precio y de radio (haversine).
+- Ante `429` la plataforma se enfría 3 minutos; ante `403` (bloqueo), 15
+  minutos. El resto de plataformas siguen funcionando.
+- Wallapop se consulta con `httpx` y las cabeceras de su web.
+- Vinted exige cookies de sesión: el bot visita la web, las guarda y las
+  renueva automáticamente si caducan.
+- En el móvil, **runit** supervisa el proceso y **Termux:Boot** lo arranca al
+  encender. La base de datos y el token viven solo en `~/bot-tracker`.
 
-**`sv status bot` dice `down`**
+---
+
+## 5. Desarrollo local
+
+Esta sección es solo para probar o modificar el bot en un ordenador; no hace
+falta para instalarlo en el móvil.
+
+### Requisitos
+
+- Linux (probado con Python 3.14; funciona desde 3.11)
+- Un bot de Telegram de [@BotFather](https://t.me/BotFather)
+
+### Puesta en marcha
 
 ```bash
-tail -n 50 ~/bot-tracker/logs/current
+cd bot-tracker
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
 ```
 
-Suele ser token vacío o dependencias sin instalar; vuelve a ejecutar el
-instalador.
+Edita `.env` y pon al menos el token:
 
-**El bot deja de responder por la noche**
-Revisa la sección 6.4 y ejecuta `phone-doctor.sh`.
+```env
+TELEGRAM_BOT_TOKEN=123456789:AAEjemploDeTokenDeBotFather
+```
 
-**Vinted responde 403**
-Suele ser bloqueo temporal de cookies/IP: `sv restart bot`. Desde la Wi-Fi de
-casa funciona mejor que desde datos móviles compartidos.
+Arranca el bot:
 
-## 7. Versiones y releases
+```bash
+.venv/bin/python main.py
+```
+
+### Autorizarte en desarrollo
+
+El bot es privado: solo responde a los `chat_id` de `ALLOWED_CHAT_IDS`.
+
+1. Con el bot arrancado, escribe `/start` desde tu Telegram.
+2. El bot te responderá con **tu chat_id** y te dirá que no tienes acceso.
+3. Añádelo al `.env`:
+
+   ```env
+   ALLOWED_CHAT_IDS=123456789
+   ```
+
+4. Reinicia el bot. Escribe `/ayuda` y ya podrás crear búsquedas.
+
+Puedes autorizar a más personas separando IDs por comas. Si dejas
+`ALLOWED_CHAT_IDS` vacío, el bot rechazará a todo el mundo (comportamiento
+seguro por defecto). El instalador de Android rellena este campo por ti.
+
+### Tests y lint
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest
+.venv/bin/ruff check .
+```
+
+Los tests cubren filtros, parseo de respuestas reales de ambas plataformas,
+persistencia y la lógica del scheduler (siembra inicial, deduplicación,
+límites de avisos) con fuentes simuladas. No hacen peticiones de red.
+
+---
+
+## 6. Versiones y releases
 
 La versión vive en `version.py` (única fuente de verdad) y se muestra en
 `/estado` y en el log de arranque.
@@ -382,9 +425,9 @@ La versión vive en `version.py` (única fuente de verdad) y se muestra en
 
 | Tipo | Cuándo | Ejemplo |
 | --- | --- | --- |
-| **PATCH** | Arreglos, documentación, dependencias | `1.0.1` |
-| **MINOR** | Nueva funcionalidad, comandos o filtros | `1.1.0` |
-| **MAJOR** | Cambios incompatibles (config, BD, comandos) | `2.0.0` |
+| **PATCH** | Arreglos, documentación, dependencias | `2.1.1` |
+| **MINOR** | Nueva funcionalidad, comandos o filtros | `2.2.0` |
+| **MAJOR** | Cambios incompatibles (config, BD, comandos) | `3.0.0` |
 
 Ningún cambio llega a `main` sin subir `version.py` y sin entrada en
 `CHANGELOG.md`.
@@ -406,38 +449,45 @@ commit y el tag en local.
 
 ```bash
 python scripts/check_version.py          # SemVer, fecha y changelog
-python scripts/check_version.py v1.0.0   # además, que el tag coincida
+python scripts/check_version.py v2.1.0   # además, que el tag coincida
 ```
 
 La CI (`.github/workflows/ci.yml`):
 
+- comprueba `bash -n` de todos los scripts;
 - ejecuta `ruff` y `pytest` en cada push/PR;
 - falla si un cambio no modifica `version.py`;
 - en tags `v*`, verifica que el tag coincide con `version.py`.
 
 No se crean GitHub Releases: el historial vive en `CHANGELOG.md` y en los tags.
 
-### Actualizar el móvil
+---
+
+## 7. Problemas frecuentes
+
+### Instalación
+
+**El token no es válido**
+Cópialo entero desde @BotFather (`/mybots` → tu bot → API Token). Debe tener el
+formato `123456789:AA...`. El instalador no continúa sin un token válido.
+
+**No detecta mi chat_id**
+Abre `https://t.me/tu_bot`, pulsa **Start** y repite el instalador. También
+puedes fijarlo con `phone-config.sh --chat-id`.
+
+**`sv status bot` dice `down`**
 
 ```bash
-bash ~/bot-tracker/update.sh
+tail -n 50 ~/bot-tracker/logs/current
 ```
 
-Hace backup, actualiza, reinicia el servicio runit y verifica la versión.
-Comprueba con `/estado` que aparece la nueva versión.
+Suele ser un token vacío o dependencias sin instalar; vuelve a ejecutar el
+instalador.
 
-## 8. Desarrollo y tests
+### Funcionamiento
 
-```bash
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/pytest
-```
-
-Los tests cubren filtros, parseo de respuestas reales de ambas plataformas,
-persistencia y la lógica del scheduler (siembra inicial, deduplicación,
-límites de avisos) con fuentes simuladas. No hacen peticiones de red.
-
-## 9. Problemas frecuentes
+**El bot deja de responder por la noche**
+Revisa los ajustes de batería de la sección 1.4 y ejecuta `phone-doctor.sh`.
 
 **Wallapop responde 403 (Request blocked)**
 El WAF de CloudFront ha bloqueado la IP temporalmente. El bot enfriará esa
@@ -450,14 +500,12 @@ ocurrir. Si persiste, puede que Vinted haya cambiado el endpoint
 
 **No llegan avisos**
 Comprueba `/estado` (¿la alerta está activa? ¿hay plataformas enfriando?),
-lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/logs/current` (el log del
-servicio runit).
+lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/logs/current`.
 
 **La actualización no se aplica**
 Revisa `~/bot-tracker/update.log`. El script descarta los cambios locales con
-backup y hace rollback si falla; el log indica el paso exacto. Con runit, el
-script baja el servicio (`sv down bot`) antes de actualizar, así que no hay que
-parar nada a mano.
+backup y hace rollback si falla; con runit baja el servicio antes de actualizar,
+así que no hay que parar nada a mano.
 
 **Cambiar de país en Vinted**
 Ajusta en `.env`:
@@ -471,7 +519,9 @@ Wallapop no permite filtrar por país: usa su feed por defecto. Los anuncios de
 fuera de España aparecen marcados en el aviso (`🇵🇹 Portugal · fuera de
 España`), y puedes acotar la zona con `/ubicacion` + `/editar <id> distancia`.
 
-## 10. Estructura del proyecto
+---
+
+## 8. Estructura del proyecto
 
 ```text
 main.py              Arranque: Telegram + scheduler
@@ -501,7 +551,9 @@ CHANGELOG.md         Historial de versiones
 .github/workflows/   CI (tests, lint y control de versión)
 ```
 
-## 11. Aviso legal
+---
+
+## 9. Aviso legal
 
 Este proyecto es de uso personal y no está afiliado a Wallapop ni a Vinted.
 Automatizar el acceso puede ir contra sus términos de servicio. El bot está

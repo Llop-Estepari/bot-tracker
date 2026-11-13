@@ -278,11 +278,22 @@ los dos últimos comandos lo pasan a `main` con upstream; a partir de ahí
 bash ~/bot-tracker/deploy/termux-update.sh
 ```
 
-El script para el bot, guarda copias con fecha de `tracker.db` y `.env` en
-`~/bot-tracker-backups/`, hace `git pull --ff-only`, instala dependencias solo
-si cambiaron los `requirements`, valida que el código compila, reinicia en
-`tmux` y vuelve al commit anterior si algo falla. Nunca toca `.env`, `.venv`,
-`tracker.db` ni `bot.log`. Muestra la versión antes y después de actualizar.
+> Ejecútalo desde la **shell normal de Termux**, no desde dentro de
+> `tmux attach -t bot`. Si estás dentro, sal con `Ctrl+B, D`.
+
+El script guarda copias con fecha de `tracker.db` y `.env` en
+`~/bot-tracker-backups/`, hace `git fetch` y `git checkout -B main origin/main`,
+instala dependencias solo si cambiaron los `requirements`, valida que el código
+compila, reinicia en `tmux` y vuelve al commit anterior si algo falla. Nunca
+toca `.env`, `.venv`, `tracker.db` ni `bot.log`. Muestra la versión antes y
+después y comprueba que el proceso arrancó con la versión nueva.
+
+Si hay cambios locales, el script muestra qué ficheros son. Para ver qué
+borraría `git clean`, usa `git clean -nd`; si son ficheros obsoletos de
+instalaciones antiguas (`Dockerfile`, `fly.toml`, `geocode.py`,
+`requirements-termux.txt`…), `git clean -fd` los elimina sin tocar `.env`,
+`tracker.db` ni `.venv` (no uses `-x`). También puedes ejecutar el script con
+`--force` para descartarlos automáticamente.
 
 ### Persistencia y batería
 
@@ -382,6 +393,12 @@ ocurrir. Si persiste, puede que Vinted haya cambiado el endpoint
 Comprueba `/estado` (¿la alerta está activa? ¿hay plataformas enfriando?),
 lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/bot.log` (o entra con
 `tmux attach -t bot`).
+
+**La actualización no se aplica**
+Revisa `~/bot-tracker/update.log`. Si dice “hay cambios locales”, muestra los
+ficheros con `git status --short`, comprueba qué borraría `git clean -nd` y
+límpialos con `git clean -fd` (sin `-x`) o ejecuta el script con `--force`.
+Comprueba también que no lo estás ejecutando dentro de la sesión tmux `bot`.
 
 **Cambiar de país en Vinted**
 Ajusta en `.env`:

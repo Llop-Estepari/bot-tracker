@@ -3,10 +3,14 @@
 #
 # Uso:
 #   bash ~/bot-tracker/deploy/termux-update.sh
+#   bash ~/bot-tracker/deploy/termux-update.sh --force  # descarta cambios locales
 #
 # Hace backup de .env y tracker.db, actualiza el código por Git, valida que
 # compila y reinicia el bot en tmux. Si algo falla después de parar el bot,
 # vuelve al commit anterior y lo arranca de nuevo.
+#
+# Ejecútalo desde la shell normal de Termux, no desde dentro de
+# `tmux attach -t bot`.
 #
 # No toca .env, .venv, tracker.db ni bot.log.
 
@@ -69,14 +73,42 @@ fi
 command -v git >/dev/null 2>&1 || pkg install -y git
 command -v tmux >/dev/null 2>&1 || pkg install -y tmux
 
-[ -z "$(git status --porcelain)" ] || abort \
-    "hay cambios locales en el repo. Haz commit o descártalos antes de actualizar."
+FORCE=0
+for arg in "$@"; do
+    if [ "$arg" = "--force" ]; then
+        FORCE=1
+    fi
+done
+
+DIRTY="$(git status --porcelain)"
+if [ -n "$DIRTY" ]; then
+    echo "❌ Hay cambios locales en el repo:" >&2
+    echo "$DIRTY" >&2
+    echo >&2
+    echo "Revisa con: git status --short" >&2
+    echo "Ver qué se borraría: git clean -nd" >&2
+    if [ "$FORCE" -ne 1 ]; then
+        echo "Si son ficheros obsoletos: git clean -fd" >&2
+        echo "Para descartarlos y actualizar: bash deploy/termux-update.sh --force" >&2
+        echo "No se ha modificado nada." >&2
+        exit 1
+    fi
+    echo "AVISO: --force descartará esos cambios (no toca .env, tracker.db ni .venv)." >&2
+fi
 
 BEFORE="$(git rev-parse HEAD)"
 STOPPED=0
+BOT_PROCESS_PATTERN='(^|/)[.]venv/bin/python main[.]py$'
 
 stop_bot() {
     tmux kill-session -t "$SESSION" 2>/dev/null || true
+    pkill -f "$BOT_PROCESS_PATTERN" 2>/dev/null || true
+    sleep 1
+    if pgrep -f "$BOT_PROCESS_PATTERN" >/dev/null 2>&1; then
+        echo "AVISO: el bot sigue vivo; forzando parada" >&2
+        pkill -9 -f "$BOT_PROCESS_PATTERN" 2>/dev/null || true
+        sleep 1
+    fi
 }
 
 start_bot() {
@@ -95,6 +127,7 @@ on_error() {
     echo "❌ La actualización ha fallado (código $code)." >&2
     if [ "$STOPPED" -eq 1 ]; then
         echo "↩️  Volviendo al commit $BEFORE" >&2
+        stop_bot
         git reset --hard "$BEFORE"
         start_bot
         echo "El bot se ha reiniciado con la versión anterior." >&2
@@ -124,6 +157,13 @@ if [ -f .env ]; then
     echo ".env       -> $BACKUPS/env-$STAMP"
 else
     echo "AVISO: no existe .env."
+fi
+
+if [ "$FORCE" -eq 1 ] && [ -n "$DIRTY" ]; then
+    echo
+    echo "==> Descartando cambios locales (--force)"
+    git reset --hard HEAD
+    git clean -fd
 fi
 
 echo
@@ -159,12 +199,21 @@ fi
 
 echo
 echo "== 5/5 Arrancando el bot =="
+LOG_LINES_BEFORE="$(wc -l < bot.log 2>/dev/null || echo 0)"
 start_bot
 sleep 3
 tmux has-session -t "$SESSION" 2>/dev/null || {
-    echo "el bot no ha arrancado" >&2
+    echo "el bot no ha arrancado (sesión tmux ausente)" >&2
     false
 }
+if ! pgrep -f "$BOT_PROCESS_PATTERN" >/dev/null 2>&1; then
+    echo "el proceso del bot no está corriendo" >&2
+    false
+fi
+if [ -n "$NEW_VERSION" ] && ! tail -n +"$((LOG_LINES_BEFORE + 1))" bot.log 2>/dev/null | grep -q "Arrancando el bot v${NEW_VERSION}"; then
+    echo "el bot no arrancó con la versión ${NEW_VERSION}" >&2
+    false
+fi
 trap - ERR
 STOPPED=0
 

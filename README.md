@@ -270,30 +270,36 @@ git branch --set-upstream-to=origin/main main
 
 Si ya tenías el clon en otra rama (por ejemplo `master`) o en detached HEAD,
 los dos últimos comandos lo pasan a `main` con upstream; a partir de ahí
-`deploy/termux-update.sh` funciona siempre.
+`bash ~/bot-tracker/update.sh` funciona siempre.
 
 ### Actualizar
 
 ```bash
-bash ~/bot-tracker/deploy/termux-update.sh
+bash ~/bot-tracker/update.sh
 ```
 
 > Ejecútalo desde la **shell normal de Termux**, no desde dentro de
 > `tmux attach -t bot`. Si estás dentro, sal con `Ctrl+B, D`.
 
-El script guarda copias con fecha de `tracker.db` y `.env` en
-`~/bot-tracker-backups/`, hace `git fetch` y `git checkout -B main origin/main`,
-instala dependencias solo si cambiaron los `requirements`, valida que el código
-compila, reinicia en `tmux` y vuelve al commit anterior si algo falla. Nunca
-toca `.env`, `.venv`, `tracker.db` ni `bot.log`. Muestra la versión antes y
-después y comprueba que el proceso arrancó con la versión nueva.
+El script hace todo automáticamente:
 
-Si hay cambios locales, el script muestra qué ficheros son. Para ver qué
-borraría `git clean`, usa `git clean -nd`; si son ficheros obsoletos de
-instalaciones antiguas (`Dockerfile`, `fly.toml`, `geocode.py`,
-`requirements-termux.txt`…), `git clean -fd` los elimina sin tocar `.env`,
-`tracker.db` ni `.venv` (no uses `-x`). También puedes ejecutar el script con
-`--force` para descartarlos automáticamente.
+- para el bot;
+- guarda `tracker.db`, `.env`, un tarball del worktree y el diff/estado de los
+  cambios locales en `~/bot-tracker-backups/`;
+- descarta los cambios locales y los ficheros obsoletos (nunca borra `.env`,
+  `.venv` ni `tracker.db`);
+- hace `git fetch` y `git checkout -B main origin/main`;
+- instala dependencias solo si cambiaron los `requirements`;
+- reinicia y comprueba que el proceso arranca con `Arrancando el bot vX.Y.Z`;
+- si algo falla, vuelve al commit anterior y lo arranca.
+
+No hay pasos manuales. El comando es el mismo para todas las versiones.
+
+### Widget de Termux (opcional)
+
+Instala **Termux:Widget** desde F-Droid. El script crea el atajo
+`~/.shortcuts/Actualizar bot`. Mantén pulsado el escritorio → Widgets →
+Termux:Widget → **Actualizar bot**.
 
 ### Persistencia y batería
 
@@ -361,11 +367,11 @@ No se crean GitHub Releases: el historial vive en `CHANGELOG.md` y en los tags.
 ### Actualizar el móvil
 
 ```bash
-bash ~/bot-tracker/deploy/termux-update.sh
+bash ~/bot-tracker/update.sh
 ```
 
-Hace `git pull`, instala dependencias si cambiaron y reinicia. Comprueba con
-`/estado` que aparece la nueva versión.
+Hace backup, actualiza, reinicia y verifica. Comprueba con `/estado` que
+aparece la nueva versión.
 
 ## 8. Desarrollo y tests
 
@@ -395,10 +401,9 @@ lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/bot.log` (o entra con
 `tmux attach -t bot`).
 
 **La actualización no se aplica**
-Revisa `~/bot-tracker/update.log`. Si dice “hay cambios locales”, muestra los
-ficheros con `git status --short`, comprueba qué borraría `git clean -nd` y
-límpialos con `git clean -fd` (sin `-x`) o ejecuta el script con `--force`.
-Comprueba también que no lo estás ejecutando dentro de la sesión tmux `bot`.
+Revisa `~/bot-tracker/update.log`. El script descarta los cambios locales con
+backup y hace rollback si falla; el log indica el paso exacto. Comprueba que no
+lo estás ejecutando dentro de la sesión tmux `bot`.
 
 **Cambiar de país en Vinted**
 Ajusta en `.env`:
@@ -422,6 +427,7 @@ scheduler.py         Bucle de comprobación y deduplicación
 sources/wallapop.py  Cliente de Wallapop
 sources/vinted.py    Cliente de Vinted
 bot/handlers.py      Comandos, asistente y callbacks
+update.sh            Lanzador corto: bash ~/bot-tracker/update.sh
 deploy/              Scripts de Termux (instalación, actualización y arranque)
 scripts/             Release, control de versión y verificación de fuentes
 tests/               Tests + fixtures reales de las APIs

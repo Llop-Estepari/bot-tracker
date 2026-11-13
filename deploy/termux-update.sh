@@ -2,11 +2,12 @@
 # Actualiza una instalación existente del bot en Termux.
 #
 # Uso:
+#   bash ~/bot-tracker/update.sh
 #   bash ~/bot-tracker/deploy/termux-update.sh
-#   bash ~/bot-tracker/deploy/termux-update.sh --force  # descarta cambios locales
 #
-# Hace backup de .env y tracker.db, actualiza el código por Git, valida que
-# compila y reinicia el bot en tmux. Si algo falla después de parar el bot,
+# Hace backup de .env, tracker.db y del worktree, descarta los cambios locales
+# (con backup), actualiza el código por Git, valida que compila, reinicia el
+# bot en tmux y comprueba que arranca con la versión nueva. Si algo falla,
 # vuelve al commit anterior y lo arranca de nuevo.
 #
 # Ejecútalo desde la shell normal de Termux, no desde dentro de
@@ -73,29 +74,6 @@ fi
 command -v git >/dev/null 2>&1 || pkg install -y git
 command -v tmux >/dev/null 2>&1 || pkg install -y tmux
 
-FORCE=0
-for arg in "$@"; do
-    if [ "$arg" = "--force" ]; then
-        FORCE=1
-    fi
-done
-
-DIRTY="$(git status --porcelain)"
-if [ -n "$DIRTY" ]; then
-    echo "❌ Hay cambios locales en el repo:" >&2
-    echo "$DIRTY" >&2
-    echo >&2
-    echo "Revisa con: git status --short" >&2
-    echo "Ver qué se borraría: git clean -nd" >&2
-    if [ "$FORCE" -ne 1 ]; then
-        echo "Si son ficheros obsoletos: git clean -fd" >&2
-        echo "Para descartarlos y actualizar: bash deploy/termux-update.sh --force" >&2
-        echo "No se ha modificado nada." >&2
-        exit 1
-    fi
-    echo "AVISO: --force descartará esos cambios (no toca .env, tracker.db ni .venv)." >&2
-fi
-
 BEFORE="$(git rev-parse HEAD)"
 STOPPED=0
 BOT_PROCESS_PATTERN='(^|/)[.]venv/bin/python main[.]py$'
@@ -159,16 +137,40 @@ else
     echo "AVISO: no existe .env."
 fi
 
-if [ "$FORCE" -eq 1 ] && [ -n "$DIRTY" ]; then
+DIRTY="$(git status --porcelain)"
+if [ -n "$DIRTY" ]; then
     echo
-    echo "==> Descartando cambios locales (--force)"
-    git reset --hard HEAD
-    git clean -fd
+    echo "==> Cambios locales detectados (se descartarán):"
+    echo "$DIRTY"
+    git diff > "$BACKUPS/worktree-$STAMP.patch"
+    printf '%s\n' "$DIRTY" > "$BACKUPS/worktree-$STAMP.status"
+    tar -czf "$BACKUPS/worktree-$STAMP.tar.gz" \
+        -C "$DEST" \
+        --exclude=.git \
+        --exclude=.venv \
+        --exclude=.env \
+        --exclude=tracker.db \
+        --exclude='*.db' \
+        --exclude='*.db-*' \
+        --exclude='*.log' \
+        --exclude=__pycache__ \
+        --exclude=.pytest_cache \
+        --exclude=.ruff_cache \
+        .
+    echo "Backup del worktree: $BACKUPS/worktree-$STAMP.tar.gz"
+    echo "Diff:                $BACKUPS/worktree-$STAMP.patch"
+else
+    echo "Sin cambios locales."
 fi
 
 echo
 echo "== 3/5 Actualizando código =="
 echo "rama actual: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo desconocida)"
+if [ -n "$DIRTY" ]; then
+    echo "Descartando cambios locales (backup en $BACKUPS)…"
+    git reset --hard HEAD
+    git clean -fd
+fi
 git fetch --all --prune
 # Garantiza la rama main y el commit exacto de origin/main, aunque la copia
 # local esté en master, en detached HEAD o sin upstream configurado.
@@ -216,6 +218,14 @@ if [ -n "$NEW_VERSION" ] && ! tail -n +"$((LOG_LINES_BEFORE + 1))" bot.log 2>/de
 fi
 trap - ERR
 STOPPED=0
+
+# Prepara el atajo del widget de Termux (Termux:Widget).
+mkdir -p "$HOME/.shortcuts" 2>/dev/null || true
+{
+    printf '%s\n' '#!/data/data/com.termux/files/usr/bin/bash'
+    printf '%s\n' 'exec bash "$HOME/bot-tracker/update.sh"'
+} > "$HOME/.shortcuts/Actualizar bot" 2>/dev/null || true
+chmod +x "$HOME/.shortcuts/Actualizar bot" 2>/dev/null || true
 
 echo
 echo "✅ Actualización completada."

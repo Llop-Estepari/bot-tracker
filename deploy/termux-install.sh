@@ -88,10 +88,19 @@ cp "$DEST/deploy/termux-boot.sh" "$HOME/.termux/boot/start-bot.sh"
 chmod +x "$HOME/.termux/boot/start-bot.sh"
 termux-wake-lock || true
 
+# Atajo del widget de Termux (requiere instalar Termux:Widget).
+mkdir -p "$HOME/.shortcuts"
+{
+    printf '%s\n' '#!/data/data/com.termux/files/usr/bin/bash'
+    printf '%s\n' 'exec bash "$HOME/bot-tracker/update.sh"'
+} > "$HOME/.shortcuts/Actualizar bot"
+chmod +x "$HOME/.shortcuts/Actualizar bot"
+
 echo
 echo "== INSTALACIÓN COMPLETA =="
 echo "Arranca el bot con:"
 echo
 echo "  cd ~/bot-tracker && tmux new -s bot '.venv/bin/python main.py 2>&1 | tee -a bot.log'"
 echo
+echo "Widget: instala Termux:Widget desde F-Droid y añade 'Actualizar bot'."
 echo "Log de instalación: $LOG"

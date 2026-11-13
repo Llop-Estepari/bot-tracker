@@ -219,144 +219,251 @@ Usa `-` como valor para borrar un filtro.
 ## 6. Hosting en Android con Termux
 
 Termux es la opción más barata (0 €/mes) y, al usar una IP residencial/móvil,
-permite **Wallapop y Vinted a la vez**. Requiere Termux y Termux:Boot desde
-**F-Droid** (no desde Play Store), Android 7+ y un móvil que puedas dejar
-enchufado y en Wi-Fi.
+permite **Wallapop y Vinted a la vez**. El bot corre como servicio supervisado
+con **runit**: si el proceso cae, se levanta solo, y arranca con el móvil
+gracias a Termux:Boot.
 
-### Preparar el móvil
+Requisitos: Android 7+, Wi-Fi, cable USB de datos, un ordenador y un móvil que
+puedas dejar enchufado.
 
-```bash
-# En Termux, una sola vez
-termux-setup-storage
-```
+### 6.1 Instalación desde cero (recomendada, por USB)
 
-Copia el proyecto y los datos al almacenamiento compartido del móvil:
+#### En el móvil
 
-```bash
-# En el portátil
-adb push bot-tracker /sdcard/Download/bot-tracker
-adb push tracker.db /sdcard/Download/bot-tracker/tracker.db
-# .env.termux con el token y ALLOWED_CHAT_IDS
-adb push .env.termux /sdcard/Download/bot-tracker/.env.termux
-```
+1. **Opciones de desarrollador:** Ajustes → Información del teléfono → toca 7
+   veces **Número de compilación**.
+2. **Depuración USB:** Ajustes → Sistema → Opciones de desarrollador → activar.
+3. En HyperOS/MIUI activa también **Instalar vía USB** (puede pedir cuenta Mi
+   y SIM).
+4. Conecta el móvil al ordenador con un cable **de datos**.
 
-### Instalación automática
+#### En el ordenador
 
-```bash
-# En Termux
-bash ~/storage/downloads/bot-tracker/deploy/termux-install.sh
-```
+Instala `adb` y `git`:
 
-El instalador:
-
-1. Instala `python` y `tmux`.
-2. Copia el proyecto a `~/bot-tracker`.
-3. Crea el `.venv` e instala `requirements.txt`.
-4. Coloca el `.env` y migra `tracker.db`.
-5. Ajusta las búsquedas a 300 s de intervalo.
-6. Comprueba Wallapop y Vinted desde la red del móvil.
-7. Configura `~/.termux/boot/start-bot.sh` para arrancar con el teléfono.
-
-### Arrancar el bot
+**Ubuntu / Debian / Mint**
 
 ```bash
-cd ~/bot-tracker
-tmux new -s bot '.venv/bin/python main.py 2>&1 | tee -a bot.log'
-# salir sin matar el bot: Ctrl+B, D
+sudo apt update
+sudo apt install -y android-tools-adb android-tools-fastboot \
+                    android-sdk-platform-tools-common git curl
 ```
 
-### Conectar el móvil al repositorio (una sola vez)
-
-El repositorio es privado. Crea una **deploy key de solo lectura** en Termux:
+**Fedora**
 
 ```bash
-pkg install -y openssh
-mkdir -p ~/.ssh && chmod 700 ~/.ssh
-ssh-keygen -t ed25519 -C "termux-bot" -f ~/.ssh/id_ed25519 -N ""
-cat ~/.ssh/id_ed25519.pub
+sudo dnf install -y android-tools git curl
 ```
 
-Añade esa clave pública al repositorio como deploy key de solo lectura (sin
-`--allow-write`):
+**Arch / Manjaro**
 
 ```bash
-gh repo deploy-key add clave-publica.pub --title "Termux" \
-  -R Llop-Estepari/bot-tracker
+sudo pacman -S --needed android-tools git curl
 ```
 
-Configura SSH y convierte la instalación existente en un clon conservando
-`.env` y `tracker.db`:
+**macOS** (Homebrew)
 
 ```bash
-cat > ~/.ssh/config <<'EOF'
-Host github.com
-  IdentityFile ~/.ssh/id_ed25519
-  IdentitiesOnly yes
-EOF
-chmod 600 ~/.ssh/config
-
-cd ~/bot-tracker
-git init -b main
-git remote add origin git@github.com:Llop-Estepari/bot-tracker.git 2>/dev/null \
-  || git remote set-url origin git@github.com:Llop-Estepari/bot-tracker.git
-git fetch origin
-git checkout -B main origin/main
-git branch --set-upstream-to=origin/main main
+brew install android-platform-tools git
 ```
 
-`.env`, `tracker.db` y `.venv` están en `.gitignore` y no se tocan.
+**Windows 10/11** (PowerShell; ejecuta el instalador con **Git Bash**)
 
-Si ya tenías el clon en otra rama (por ejemplo `master`) o en detached HEAD,
-los dos últimos comandos lo pasan a `main` con upstream; a partir de ahí
-`bash ~/bot-tracker/update.sh` funciona siempre.
+```powershell
+winget install --id Git.Git -e
+winget install --id Google.PlatformTools -e
+```
 
-### Actualizar
+Si `winget` no encuentra Platform Tools, descarga
+https://dl.google.com/android/repository/platform-tools-latest-windows.zip,
+descomprímelo en `C:\platform-tools` y añade esa carpeta al `PATH`.
+
+Comprueba la conexión:
+
+```bash
+adb version
+adb devices
+```
+
+Debe aparecer el móvil como `device`. Si sale `unauthorized`, acepta el aviso
+en el móvil. Si no aparece nada:
+
+- prueba otro cable o puerto USB;
+- en Linux, comprueba las reglas udev (`android-sdk-platform-tools-common`) y
+  ejecuta `adb kill-server && adb devices`;
+- en Windows, instala el driver USB del fabricante;
+- en WSL, usa `adb` desde Windows (o configura `usbipd-win`).
+
+#### Instalar el bot
+
+```bash
+git clone https://github.com/Llop-Estepari/bot-tracker.git
+cd bot-tracker
+bash deploy/provision-adb.sh --token "123456789:AA..." --chat-id 123456789
+```
+
+El script:
+
+1. descarga e instala **Termux**, **Termux:Boot**, **Termux:Widget** y
+   **Termux:API** desde F-Droid;
+2. exime a Termux del ahorro de batería y desactiva el *phantom process killer*
+   de Android 12+;
+3. copia `.env` y, si se pasa `--db`, `tracker.db`;
+4. clona el repo, crea el `.venv` e instala las dependencias;
+5. registra el servicio **runit** y el arranque con Termux:Boot;
+6. crea los atajos del widget y verifica que arranca con la versión correcta.
+
+Si el móvil bloquea la ejecución remota, el script te deja **un único comando**
+para pegar en Termux:
+
+```bash
+bash /sdcard/Download/bot-install.sh --yes --env-file /sdcard/Download/bot.env
+```
+
+#### Opciones útiles de `provision-adb.sh`
+
+| Opción | Para qué |
+| --- | --- |
+| `--chat-id 1,2` | Autorizar varios chats |
+| `--env-file RUTA` | Usar un `.env` ya preparado en vez de `--token` |
+| `--db RUTA` | Restaurar un `tracker.db` existente |
+| `--serial SERIAL` | Elegir móvil si hay varios conectados |
+| `--no-apks` | No reinstalar las apps de F-Droid |
+| `--no-remote` | Solo preparar el móvil y mostrar el comando |
+
+### 6.2 Instalación sin ordenador
+
+1. Instala desde F-Droid: **Termux**, **Termux:Boot** y **Termux:Widget**.
+2. Abre Termux y pega:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Llop-Estepari/bot-tracker/main/deploy/phone-install.sh | bash
+```
+
+3. Introduce el token y el chat_id cuando pregunte.
+
+El script es idempotente: puedes volver a ejecutarlo para reparar la instalación
+sin perder `.env`, `tracker.db` ni los datos.
+
+### 6.3 Servicio runit y atajos
+
+Comandos útiles en Termux:
+
+```bash
+sv status bot      # estado del servicio
+sv restart bot     # reiniciar
+sv down bot        # parar
+sv up bot          # arrancar
+tail -f ~/bot-tracker/logs/current   # logs en vivo
+```
+
+Los logs rotan solos: 5 MB por fichero y 3 ficheros (`~/bot-tracker/logs`).
+
+Atajos de **Termux:Widget** (se crean automáticamente): *Instalar bot*,
+*Actualizar bot*, *Estado*, *Reiniciar bot*, *Ver logs* y *Backup*. Añade el
+widget desde la pantalla de inicio.
+
+### 6.4 Ajustes obligatorios en HyperOS/MIUI
+
+Sin esto, Xiaomi terminará matando el bot:
+
+- Ajustes → Aplicaciones → **Termux** → **Batería** → *Sin restricciones*.
+- Ajustes → Aplicaciones → **Termux** → **Inicio automático** → activar.
+- Recientes → mantén Termux → **candado**.
+- Desactiva el ahorro de energía agresivo del sistema.
+
+Recomendado: móvil enchufado y, si existe, **límite de carga al 80 %**.
+
+### 6.5 Comprobar y actualizar
+
+En Telegram:
+
+```text
+/estado     → versión, uptime y búsquedas
+/ubicacion  → origen para el filtro de distancia
+/nuevo      → crear una búsqueda
+```
+
+En el móvil:
+
+```bash
+bash ~/bot-tracker/deploy/phone-doctor.sh
+```
+
+Para cambiar el token o los chats autorizados sin editar el archivo:
+
+```bash
+bash ~/bot-tracker/deploy/phone-config.sh --chat-id 123456789 --restart
+bash ~/bot-tracker/deploy/phone-config.sh --token "123:ABC" --restart
+bash ~/bot-tracker/deploy/phone-config.sh --show
+```
+
+Para actualizar, un toque en el widget **Actualizar bot** o:
 
 ```bash
 bash ~/bot-tracker/update.sh
 ```
 
-> Ejecútalo desde la **shell normal de Termux**, no desde dentro de
-> `tmux attach -t bot`. Si estás dentro, sal con `Ctrl+B, D`.
+El script para el servicio, guarda backups, actualiza, reinstala dependencias si
+cambiaron, arranca y verifica la versión. Si algo falla, vuelve al commit
+anterior.
 
-El script hace todo automáticamente:
-
-- para el bot;
-- guarda `tracker.db`, `.env`, un tarball del worktree y el diff/estado de los
-  cambios locales en `~/bot-tracker-backups/`;
-- descarta los cambios locales y los ficheros obsoletos (nunca borra `.env`,
-  `.venv` ni `tracker.db`);
-- hace `git fetch` y `git checkout -B main origin/main`;
-- instala dependencias solo si cambiaron los `requirements`;
-- reinicia y comprueba que el proceso arranca con `Arrancando el bot vX.Y.Z`;
-- si algo falla, vuelve al commit anterior y lo arranca.
-
-No hay pasos manuales. El comando es el mismo para todas las versiones.
-
-### Widget de Termux (opcional)
-
-Instala **Termux:Widget** desde F-Droid. El script crea el atajo
-`~/.shortcuts/Actualizar bot`. Mantén pulsado el escritorio → Widgets →
-Termux:Widget → **Actualizar bot**.
-
-### Persistencia y batería
-
-- `termux-wake-lock` mantiene la CPU despierta (el instalador ya lo activa).
-- Ajustes de Android → Apps → Termux → Batería → **Sin restricciones**.
-- En Xiaomi/MIUI: activa **Autostart** para Termux y Termux:Boot y quita
-  cualquier restricción de ahorro de energía.
-- Mantén el móvil enchufado y en Wi-Fi. Con 5 minutos de intervalo el consumo
-  ronda 30–60 MB/día.
-- Termux:Boot ejecuta `start-bot.sh` al encender el móvil (tras desbloquearlo).
-
-### Copias de seguridad
-
-El script de actualización guarda copias con fecha en `~/bot-tracker-backups/`.
-Para una copia manual del SQLite:
+### 6.6 Copias de seguridad y cambio de móvil
 
 ```bash
-cp ~/bot-tracker/tracker.db ~/storage/shared/tracker-$(date +%F).db
+cp ~/bot-tracker/tracker.db ~/storage/shared/bot-tracker-$(date +%F).db
 ```
+
+El `.env` contiene el token: no lo copies al almacenamiento compartido. Las
+actualizaciones ya guardan una copia en `~/bot-tracker-backups/`.
+
+Para cambiar de móvil: conecta el nuevo por USB y ejecuta en el ordenador
+
+```bash
+bash deploy/provision-adb.sh --token "…" --chat-id … --db /ruta/tracker.db
+```
+
+Para desinstalar el servicio conservando los datos:
+
+```bash
+bash deploy/phone-uninstall.sh
+```
+
+Y para borrarlo todo (antes guarda `.env` y `tracker.db` en
+`~/bot-tracker-backups`):
+
+```bash
+bash deploy/phone-uninstall.sh --purge
+```
+
+### 6.7 Instalación manual (avanzada)
+
+Si prefieres no usar el instalador, `deploy/termux-install.sh` sigue
+disponible para copiar el proyecto desde `/sdcard/Download` y arrancar con
+tmux. El repositorio es **público**, así que ya no hacen falta claves SSH ni
+deploy keys: `git clone https://github.com/Llop-Estepari/bot-tracker.git`.
+
+### 6.8 Problemas frecuentes del hosting
+
+**`adb: command not found`**
+Instala Platform Tools (sección 6.1) y reabre la terminal.
+
+**`adb devices` no muestra el móvil**
+Cable de datos, otro puerto, reglas udev en Linux, driver en Windows. Prueba
+`adb kill-server && adb devices`.
+
+**El bot deja de responder por la noche**
+Batería/phantom killer. Ejecuta `phone-doctor.sh` y revisa la sección 6.4.
+
+**`sv status bot` dice `down`**
+```bash
+tail -n 50 ~/bot-tracker/logs/current
+```
+y corrige el error (token, dependencias, base de datos).
+
+**La instalación por USB no arranca sola**
+Pega el comando que muestra el script en Termux; es el único paso manual
+posible si HyperOS bloquea la ejecución remota.
 
 ## 7. Versiones y releases
 
@@ -408,8 +515,8 @@ No se crean GitHub Releases: el historial vive en `CHANGELOG.md` y en los tags.
 bash ~/bot-tracker/update.sh
 ```
 
-Hace backup, actualiza, reinicia y verifica. Comprueba con `/estado` que
-aparece la nueva versión.
+Hace backup, actualiza, reinicia el servicio runit y verifica la versión.
+Comprueba con `/estado` que aparece la nueva versión.
 
 ## 8. Desarrollo y tests
 
@@ -435,13 +542,14 @@ ocurrir. Si persiste, puede que Vinted haya cambiado el endpoint
 
 **No llegan avisos**
 Comprueba `/estado` (¿la alerta está activa? ¿hay plataformas enfriando?),
-lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/bot.log` (o entra con
-`tmux attach -t bot`).
+lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/logs/current` (el log del
+servicio runit).
 
 **La actualización no se aplica**
 Revisa `~/bot-tracker/update.log`. El script descarta los cambios locales con
-backup y hace rollback si falla; el log indica el paso exacto. Comprueba que no
-lo estás ejecutando dentro de la sesión tmux `bot`.
+backup y hace rollback si falla; el log indica el paso exacto. Con runit, el
+script baja el servicio (`sv down bot`) antes de actualizar, así que no hay que
+parar nada a mano.
 
 **Cambiar de país en Vinted**
 Ajusta en `.env`:
@@ -469,7 +577,14 @@ sources/wallapop.py  Cliente de Wallapop
 sources/vinted.py    Cliente de Vinted
 bot/handlers.py      Comandos, asistente y callbacks
 update.sh            Lanzador corto: bash ~/bot-tracker/update.sh
-deploy/              Scripts de Termux (instalación, actualización y arranque)
+deploy/              Scripts de Termux
+  provision-adb.sh     Aprovisionamiento por USB desde el ordenador
+  phone-install.sh     Instalador en el móvil (idempotente)
+  phone-service.sh     Servicio runit + arranque con Termux:Boot
+  phone-doctor.sh      Diagnóstico de 24/7
+  phone-shortcuts.sh   Atajos de Termux:Widget
+  phone-config.sh      Token y chats autorizados
+  phone-uninstall.sh   Desinstalación (conserva datos)
 scripts/             Release, control de versión y verificación de fuentes
 tests/               Tests + fixtures reales de las APIs
 version.py           Versión de la aplicación

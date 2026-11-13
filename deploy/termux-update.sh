@@ -7,8 +7,8 @@
 #
 # Hace backup de .env, tracker.db y del worktree, descarta los cambios locales
 # (con backup), actualiza el código por Git, valida que compila, reinicia el
-# bot en tmux y comprueba que arranca con la versión nueva. Si algo falla,
-# vuelve al commit anterior y lo arranca de nuevo.
+# bot (runit o tmux) y comprueba que arranca con la versión nueva. Si algo
+# falla, vuelve al commit anterior y lo arranca de nuevo.
 #
 # Ejecútalo desde la shell normal de Termux, no desde dentro de
 # `tmux attach -t bot`.
@@ -37,6 +37,13 @@ fi
 DEST="${BOT_TRACKER_DEST:-$HOME/bot-tracker}"
 BACKUPS="$HOME/bot-tracker-backups"
 SESSION="bot"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+SERVICE_DIR="$PREFIX/var/service/$SESSION"
+export SVDIR="$PREFIX/var/service"
+HAS_SERVICE=0
+if command -v sv >/dev/null 2>&1 && [ -d "$SERVICE_DIR" ]; then
+    HAS_SERVICE=1
+fi
 
 [ -d "$DEST" ] || {
     echo "❌ No existe el proyecto en $DEST" >&2
@@ -79,6 +86,11 @@ STOPPED=0
 BOT_PROCESS_PATTERN='(^|/)[.]venv/bin/python main[.]py$'
 
 stop_bot() {
+    # Con runit hay que bajar el servicio; si no, se relanza solo.
+    if [ "$HAS_SERVICE" -eq 1 ]; then
+        sv down "$SESSION" 2>/dev/null || true
+        sleep 1
+    fi
     tmux kill-session -t "$SESSION" 2>/dev/null || true
     pkill -f "$BOT_PROCESS_PATTERN" 2>/dev/null || true
     sleep 1
@@ -90,6 +102,15 @@ stop_bot() {
 }
 
 start_bot() {
+    if [ "$HAS_SERVICE" -eq 1 ]; then
+        if ! pgrep -f "runsvdir -P $PREFIX/var/service" >/dev/null 2>&1; then
+            nohup "$PREFIX/bin/runsvdir" -P "$PREFIX/var/service" \
+                >/dev/null 2>&1 &
+            sleep 1
+        fi
+        sv up "$SESSION" 2>/dev/null || true
+        return 0
+    fi
     if tmux has-session -t "$SESSION" 2>/dev/null; then
         return 0
     fi
@@ -201,36 +222,70 @@ fi
 
 echo
 echo "== 5/5 Arrancando el bot =="
-LOG_LINES_BEFORE="$(wc -l < bot.log 2>/dev/null || echo 0)"
-start_bot
-sleep 3
-tmux has-session -t "$SESSION" 2>/dev/null || {
-    echo "el bot no ha arrancado (sesión tmux ausente)" >&2
-    false
-}
-if ! pgrep -f "$BOT_PROCESS_PATTERN" >/dev/null 2>&1; then
-    echo "el proceso del bot no está corriendo" >&2
-    false
-fi
-if [ -n "$NEW_VERSION" ] && ! tail -n +"$((LOG_LINES_BEFORE + 1))" bot.log 2>/dev/null | grep -q "Arrancando el bot v${NEW_VERSION}"; then
-    echo "el bot no arrancó con la versión ${NEW_VERSION}" >&2
-    false
+if [ "$HAS_SERVICE" -eq 1 ]; then
+    LOG_FILE="$DEST/logs/current"
+    start_bot
+    for _ in $(seq 1 15); do
+        if sv status "$SESSION" 2>/dev/null | grep -q '^run:'; then
+            break
+        fi
+        sleep 1
+    done
+    sv status "$SESSION" 2>/dev/null | grep -q '^run:' || {
+        echo "el servicio runit no está en ejecución" >&2
+        false
+    }
+    if [ -n "$NEW_VERSION" ]; then
+        for _ in $(seq 1 15); do
+            if tail -n 500 "$LOG_FILE" 2>/dev/null \
+                | grep -q "Arrancando el bot v${NEW_VERSION}"; then
+                break
+            fi
+            sleep 1
+        done
+        if ! tail -n 500 "$LOG_FILE" 2>/dev/null \
+            | grep -q "Arrancando el bot v${NEW_VERSION}"; then
+            echo "el bot no arrancó con la versión ${NEW_VERSION}" >&2
+            false
+        fi
+    fi
+else
+    LOG_FILE="$DEST/bot.log"
+    LOG_LINES_BEFORE="$(wc -l < bot.log 2>/dev/null || echo 0)"
+    start_bot
+    sleep 3
+    tmux has-session -t "$SESSION" 2>/dev/null || {
+        echo "el bot no ha arrancado (sesión tmux ausente)" >&2
+        false
+    }
+    if ! pgrep -f "$BOT_PROCESS_PATTERN" >/dev/null 2>&1; then
+        echo "el proceso del bot no está corriendo" >&2
+        false
+    fi
+    if [ -n "$NEW_VERSION" ] && ! tail -n +"$((LOG_LINES_BEFORE + 1))" bot.log 2>/dev/null | grep -q "Arrancando el bot v${NEW_VERSION}"; then
+        echo "el bot no arrancó con la versión ${NEW_VERSION}" >&2
+        false
+    fi
 fi
 trap - ERR
 STOPPED=0
 
-# Prepara el atajo del widget de Termux (Termux:Widget).
-mkdir -p "$HOME/.shortcuts" 2>/dev/null || true
-{
-    printf '%s\n' '#!/data/data/com.termux/files/usr/bin/bash'
-    printf '%s\n' 'exec bash "$HOME/bot-tracker/update.sh"'
-} > "$HOME/.shortcuts/Actualizar bot" 2>/dev/null || true
-chmod +x "$HOME/.shortcuts/Actualizar bot" 2>/dev/null || true
+# Regenera los atajos del widget (incluye actualizar, estado, logs…).
+if [ -x deploy/phone-shortcuts.sh ] || [ -f deploy/phone-shortcuts.sh ]; then
+    bash deploy/phone-shortcuts.sh >/dev/null 2>&1 || true
+else
+    mkdir -p "$HOME/.shortcuts" 2>/dev/null || true
+    {
+        printf '%s\n' '#!/data/data/com.termux/files/usr/bin/bash'
+        printf '%s\n' 'exec bash "$HOME/bot-tracker/update.sh"'
+    } > "$HOME/.shortcuts/Actualizar bot" 2>/dev/null || true
+    chmod +x "$HOME/.shortcuts/Actualizar bot" 2>/dev/null || true
+fi
 
 echo
 echo "✅ Actualización completada."
 echo "Versión: ${NEW_VERSION:-desconocida}"
 echo "Backups: $BACKUPS"
-echo "Log del bot: $DEST/bot.log"
+echo "Log del bot: $LOG_FILE"
 echo
-tail -n 20 bot.log || true
+tail -n 20 "$LOG_FILE" 2>/dev/null || true

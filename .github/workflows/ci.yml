@@ -17,6 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Comprobar sintaxis de los scripts
+        run: |
+          for script in deploy/*.sh update.sh; do
+            echo "bash -n $script"
+            bash -n "$script"
+          done
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"

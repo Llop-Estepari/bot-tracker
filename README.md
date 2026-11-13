@@ -3,14 +3,14 @@
 Bot personal que vigila búsquedas en **Wallapop** y **Vinted** y te avisa por
 Telegram en cuanto aparece un anuncio nuevo que encaja con tus filtros.
 
-- Filtros por palabras clave, precio, envío (Wallapop), marcas, categorías y
-  estado (Vinted).
+- Filtros por palabras clave, precio, envío y distancia (Wallapop), marcas,
+  categorías y estado (Vinted).
 - Palabras excluidas y **modo estricto** para eliminar resultados irrelevantes.
 - Cada búsqueda tiene su propio intervalo (60 s – 1 h, por defecto 90 s).
 - Deduplicación en SQLite: nunca recibes dos veces el mismo anuncio.
 - Aviso de **bajada de precio** cuando un anuncio ya visto se abarata
   (activable por búsqueda).
-- Avisos con foto, precio, ubicación y enlace directo, con botón para
+- Avisos con foto, precio, ubicación, distancia y país, con botón para
   silenciar la búsqueda.
 - Todo se gestiona desde el chat: no hay que editar archivos para cambiar
   filtros.
@@ -82,10 +82,12 @@ El asistente pide, paso a paso:
 3. **Palabras clave** — lo que buscará la plataforma.
 4. **Precio** — `100-400`, `100-` (solo mínimo), `-400` (solo máximo),
    `-` (sin filtro).
-5. **Palabras excluidas** — `roto, para piezas, sin mando` (puede quedar vacío
+5. **Distancia** (solo Wallapop) — sin límite por defecto, o 5/10/25/50/100/200
+   km desde tu ubicación.
+6. **Palabras excluidas** — `roto, para piezas, sin mando` (puede quedar vacío
    con `-`).
-6. **Intervalo** — segundos entre comprobaciones (mínimo 60, defecto 90).
-7. **¿Avisar de anuncios ya publicados?** — normalmente **No**: solo
+7. **Intervalo** — segundos entre comprobaciones (mínimo 60, defecto 90).
+8. **¿Avisar de anuncios ya publicados?** — normalmente **No**: solo
    recibirás los que se publiquen a partir de ahora.
 
 En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
@@ -99,7 +101,8 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 | `/lista` | Ver todas tus búsquedas |
 | `/ver <id>` | Detalle de una búsqueda |
 | `/probar <id>` | Consultar ahora y ver resultados sin guardar nada |
-| `/editar <id> <campo> <valor>` | Modificar nombre, palabras, precio, envío, intervalo… |
+| `/ubicacion` | Definir tu ubicación para el filtro de distancia |
+| `/editar <id> <campo> <valor>` | Modificar nombre, palabras, precio, envío, distancia, intervalo… |
 | `/avanzado <id> clave=valor` | Categorías, marcas y estado (IDs de las webs) |
 | `/pausar <id>` / `/reanudar <id>` | Pausar o reactivar |
 | `/borrar <id>` | Eliminar (con confirmación) |
@@ -118,6 +121,8 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 /editar 3 envio off
 /editar 3 estricto off
 /editar 3 precios off
+/editar 3 distancia 25
+/editar 3 distancia todo
 ```
 
 El **modo estricto** está activo por defecto: descarta anuncios cuyo título no
@@ -131,6 +136,39 @@ anuncios con envío disponible. Desactívalo con `/editar <id> envio off`.
 
 Los **términos excluidos** son opcionales y pueden quedar vacíos:
 `/editar <id> excluir -`.
+
+### Distancia (solo Wallapop)
+
+Wallapop devuelve anuncios de toda su red, incluidos Portugal, Italia y otros
+países. El filtro de distancia es **opcional** y está **sin límite por
+defecto**.
+
+1. Define tu origen una sola vez con `/ubicacion`: pulsa el botón
+   **📍 Enviar mi ubicación** (un toque) o escribe las coordenadas:
+   `/ubicacion 41.3874, 2.1686`.
+2. Limita cada búsqueda:
+
+```text
+/editar 3 distancia 25
+/editar 3 distancia 25km
+/editar 3 distancia todo
+```
+
+El radio se aplica **solo a Wallapop**; Vinted no permite filtrar por
+distancia. Rango: 1–500 km. Si cambias de origen con `/ubicacion`, todas las
+búsquedas con radio usan el nuevo punto automáticamente.
+
+En los avisos, la ubicación muestra la distancia cuando hay origen
+(`📍 Getafe (Madrid) · 12 km`). Los anuncios de fuera de España se marcan
+siempre, aunque no haya límite:
+
+```text
+📍 Lisboa (Lisboa) · 🇵🇹 Portugal · fuera de España
+```
+
+El radio se envía a Wallapop (`distance_in_km`) y además se comprueba en local
+con la distancia real del anuncio, para que el filtro sea fiable aunque la API
+lo ignore.
 
 ### Filtros avanzados
 
@@ -168,10 +206,10 @@ Usa `-` como valor para borrar un filtro.
   apareciendo en los resultados y siga cumpliendo los filtros; las APIs
   devuelven las primeras posiciones ordenadas por novedad, así que un anuncio
   muy antiguo puede salir de esa ventana.
-- Filtros server-side: palabras, precio, envío (Wallapop), categoría, marca y
-  estado.
-- Filtros client-side: modo estricto, palabras excluidas y comprobación
-  defensiva de precio.
+- Filtros server-side: palabras, precio, envío (Wallapop), distancia
+  (Wallapop), categoría, marca y estado.
+- Filtros client-side: modo estricto, palabras excluidas, comprobación
+  defensiva de precio y de radio (haversine).
 - Ante `429` la plataforma se enfría 3 minutos; ante `403` (bloqueo), 15
   minutos. El resto de plataformas siguen funcionando.
 - Wallapop se consulta con `httpx` y las cabeceras de su web; si responde 403, la plataforma se enfría.
@@ -413,15 +451,18 @@ VINTED_BASE_URL=https://www.vinted.fr
 VINTED_LOCALE=fr-FR
 ```
 
-Wallapop no permite filtrar por país: usa su feed por defecto.
+Wallapop no permite filtrar por país: usa su feed por defecto. Los anuncios de
+fuera de España aparecen marcados en el aviso (`🇵🇹 Portugal · fuera de
+España`), y puedes acotar la zona con `/ubicacion` + `/editar <id> distancia`.
 
 ## 10. Estructura del proyecto
 
 ```text
 main.py              Arranque: Telegram + scheduler
 config.py            Configuración desde .env
-db.py                SQLite: alertas y anuncios vistos
-filters.py           Filtros de cliente (modo estricto, exclusiones y precio)
+db.py                SQLite: alertas, anuncios vistos y ubicación
+filters.py           Filtros de cliente (precio, radio, estricto, exclusiones)
+geo.py               Distancias (haversine), coordenadas y países
 notifier.py          Mensajes de Telegram
 scheduler.py         Bucle de comprobación y deduplicación
 sources/wallapop.py  Cliente de Wallapop

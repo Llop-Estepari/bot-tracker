@@ -12,6 +12,12 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import RetryAfter, TelegramError
 
 from filters import format_price
+from geo import (
+    country_label,
+    format_distance,
+    is_outside_spain,
+    listing_distance_km,
+)
 from sources.vinted import DISPLAY_NAME as VINTED_NAME
 from sources.wallapop import DISPLAY_NAME as WALLAPOP_NAME
 
@@ -25,7 +31,9 @@ SOURCE_LABELS = {"wallapop": WALLAPOP_NAME, "vinted": VINTED_NAME}
 
 
 def _listing_lines(
-    listing: Listing, price_line: str | None = None
+    listing: Listing,
+    price_line: str | None = None,
+    alert: Alert | None = None,
 ) -> list[str]:
     title = html.escape(listing.title)[:220]
     lines = [f"🛒 <b>{title}</b>", ""]
@@ -33,8 +41,18 @@ def _listing_lines(
         lines.append(price_line)
     elif listing.price is not None:
         lines.append(f"💶 <b>{format_price(listing.price)}</b>")
+    location_bits: list[str] = []
     if listing.location:
-        lines.append(f"📍 <i>{html.escape(listing.location)}</i>")
+        location_bits.append(html.escape(listing.location))
+    distance = listing_distance_km(listing, alert)
+    if distance is not None:
+        location_bits.append(format_distance(distance))
+    if is_outside_spain(listing.country_code):
+        location_bits.append(
+            f"{country_label(listing.country_code)} · fuera de España"
+        )
+    if location_bits:
+        lines.append(f"📍 <i>{' · '.join(location_bits)}</i>")
     if listing.seller:
         lines.append(f"👤 <i>{html.escape(listing.seller)}</i>")
     source = SOURCE_LABELS.get(listing.source, listing.source.title())
@@ -42,11 +60,13 @@ def _listing_lines(
     return lines
 
 
-def build_caption(listing: Listing) -> str:
-    return "\n".join(_listing_lines(listing))
+def build_caption(listing: Listing, alert: Alert | None = None) -> str:
+    return "\n".join(_listing_lines(listing, alert=alert))
 
 
-def build_price_change_caption(listing: Listing, old_price: float) -> str:
+def build_price_change_caption(
+    listing: Listing, old_price: float, alert: Alert | None = None
+) -> str:
     price_line = (
         f"💶 <s>{format_price(old_price)}</s> →"
         f" <b>{format_price(listing.price)}</b>"
@@ -57,7 +77,7 @@ def build_price_change_caption(listing: Listing, old_price: float) -> str:
             price_line += f" · <i>-{percent:.0f}%</i>"
     lines = [
         "📉 <b>¡Baja de precio!</b>",
-        *_listing_lines(listing, price_line),
+        *_listing_lines(listing, price_line, alert),
     ]
     return "\n".join(lines)
 
@@ -128,7 +148,7 @@ class Notifier:
         await self._send(
             alert.chat_id,
             listing,
-            build_caption(listing),
+            build_caption(listing, alert),
             _build_markup(alert, listing),
         )
 
@@ -138,7 +158,7 @@ class Notifier:
         await self._send(
             alert.chat_id,
             listing,
-            build_price_change_caption(listing, old_price),
+            build_price_change_caption(listing, old_price, alert),
             _build_markup(alert, listing),
         )
 

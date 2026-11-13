@@ -6,6 +6,8 @@ import json
 from datetime import UTC
 from pathlib import Path
 
+import pytest
+
 from db import Alert
 from sources.vinted import build_api_base
 from sources.vinted import parse_search as parse_vinted
@@ -112,6 +114,49 @@ def test_wallapop_puede_desactivar_el_envio():
 
 def test_wallapop_busca_sin_ubicacion():
     params = WallapopSource._build_params(make_alert())
+
+    assert "latitude" not in params
+    assert "longitude" not in params
+    assert "distance_in_km" not in params
+
+
+def test_wallapop_parsea_pais_y_coordenadas():
+    listings = parse_wallapop(
+        load("wallapop_search.json"), "https://es.wallapop.com"
+    )
+
+    first = listings[0]
+    assert first.country_code == "ES"
+    assert first.latitude == pytest.approx(40.45751707979195)
+    assert first.longitude == pytest.approx(-3.47398882013767)
+
+
+def test_wallapop_envia_radio_con_origen():
+    params = WallapopSource._build_params(
+        make_alert(
+            radius_km=25,
+            origin_latitude=41.3874,
+            origin_longitude=2.1686,
+        )
+    )
+
+    assert params["latitude"] == 41.3874
+    assert params["longitude"] == 2.1686
+    assert params["distance_in_km"] == 25
+
+
+def test_wallapop_sin_radio_no_envia_coordenadas():
+    params = WallapopSource._build_params(
+        make_alert(origin_latitude=41.3874, origin_longitude=2.1686)
+    )
+
+    assert "latitude" not in params
+    assert "longitude" not in params
+    assert "distance_in_km" not in params
+
+
+def test_wallapop_radio_sin_origen_no_envia_coordenadas():
+    params = WallapopSource._build_params(make_alert(radius_km=25))
 
     assert "latitude" not in params
     assert "longitude" not in params

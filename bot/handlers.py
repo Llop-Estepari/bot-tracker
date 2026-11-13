@@ -7,7 +7,14 @@ import logging
 import warnings
 from typing import TYPE_CHECKING, Any
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    Update,
+)
 from telegram.error import TelegramError
 from telegram.ext import (
     Application,
@@ -23,7 +30,14 @@ from telegram.ext import (
 from telegram.warnings import PTBUserWarning
 
 from db import Alert, Database, NewAlert
-from filters import format_price, parse_price, parse_price_range
+from filters import format_price, parse_distance, parse_price, parse_price_range
+from geo import (
+    country_label,
+    format_distance,
+    is_outside_spain,
+    listing_distance_km,
+    parse_coordinates,
+)
 from notifier import Notifier
 from version import __release_date__, __version__
 
@@ -46,12 +60,21 @@ Creo búsquedas con filtros y te aviso por aquí cada vez que aparece un anuncio
 /probar &lt;id&gt; — ver resultados ahora sin guardar nada
 /editar &lt;id&gt; &lt;campo&gt; &lt;valor&gt; — modificar una búsqueda
 /avanzado &lt;id&gt; clave=valor — categorías, marcas y estado
+/ubicacion — definir tu ubicación para el filtro de distancia
 /pausar &lt;id&gt; · /reanudar &lt;id&gt; · /borrar &lt;id&gt;
 
 <b>Campos de /editar</b>
 <code>nombre</code>, <code>palabras</code>, <code>min</code>, <code>max</code>,
 <code>intervalo</code>, <code>excluir</code>, <code>plataformas</code>,
-<code>envio</code>, <code>estricto</code>, <code>precios</code>
+<code>envio</code>, <code>estricto</code>, <code>precios</code>,
+<code>distancia</code>
+
+📏 <b>Distancia</b> (solo Wallapop)
+Define tu origen una vez con /ubicacion y luego limita cada búsqueda:
+<code>/editar 3 distancia 25</code> · <code>/editar 3 distancia todo</code>.
+Por defecto no hay límite: verás anuncios de todo el feed, incluidos
+Portugal, Italia y otros países. Los anuncios de fuera de España se marcan
+como <i>fuera de España</i>.
 
 El <b>modo estricto</b> (activado por defecto) descarta anuncios cuyo título
 no contenga ninguna palabra clave. Desactívalo con
@@ -72,6 +95,7 @@ Desactívalas con <code>/editar 3 precios off</code>.
 <code>/editar 3 envio off</code>
 <code>/editar 3 estricto off</code>
 <code>/editar 3 plataformas ambas</code>
+<code>/editar 3 distancia 25</code>
 <code>/avanzado 3 vinted_brand=53,417</code>
 
 Cuando recibas un aviso, el botón «Silenciar búsqueda» pausa esa alerta.
@@ -86,10 +110,11 @@ Cuando recibas un aviso, el botón «Silenciar búsqueda» pausa esa alerta.
     WIZ_PLATFORMS,
     WIZ_KEYWORDS,
     WIZ_PRICE,
+    WIZ_DISTANCE,
     WIZ_EXCLUDE,
     WIZ_INTERVAL,
     WIZ_NOTIFY,
-) = range(7)
+) = range(8)
 
 
 # --------------------------------------------------------------------------- #
@@ -168,6 +193,19 @@ def format_alert(alert: Alert) -> str:
             else "📦 <i>envío indiferente</i>"
         )
         lines.append(shipping)
+        if alert.radius_km is None:
+            lines.append("🌍 <i>sin límite de distancia</i>")
+        elif alert.origin_latitude is None or alert.origin_longitude is None:
+            lines.append(
+                f"📏 <i>hasta {alert.radius_km} km · falta /ubicacion</i>"
+            )
+        else:
+            suffix = (
+                " (solo Wallapop)" if len(alert.platforms) > 1 else ""
+            )
+            lines.append(
+                f"📏 <i>hasta {alert.radius_km} km{suffix}</i>"
+            )
     if alert.exclude_words:
         lines.append(f"🚫 <i>excluye: {html.escape(alert.exclude_words)}</i>")
 
@@ -370,6 +408,103 @@ async def delete_alert(
     )
 
 
+# --------------------------------------------------------------------------- #
+# /ubicacion
+# --------------------------------------------------------------------------- #
+
+
+def _location_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton("📍 Enviar mi ubicación", request_location=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+async def location_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    chat = update.effective_chat
+    if message is None or chat is None:
+        return
+    args = context.args or []
+    db = _db(context)
+
+    if args and args[0].lower() in {"borrar", "quitar", "delete", "-"}:
+        removed = await db.delete_location(chat.id)
+        await message.reply_text(
+            (
+                "🗑 Ubicación borrada. Las búsquedas con distancia volverán a"
+                " mostrar todo el feed hasta que definas otra."
+                if removed
+                else "No había ninguna ubicación guardada."
+            ),
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    if args:
+        try:
+            latitude, longitude = parse_coordinates(" ".join(args))
+        except ValueError as exc:
+            await message.reply_text(f"⚠️ {exc}")
+            return
+        await db.set_location(chat.id, latitude, longitude)
+        await message.reply_text(
+            f"📌 Origen guardado: <code>{latitude:.5f}, {longitude:.5f}</code>\n"
+            "Todas tus búsquedas con distancia usarán este punto.",
+            parse_mode="HTML",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    current = await db.get_location(chat.id)
+    lines = ["📍 <b>Tu ubicación</b>", ""]
+    if current is None:
+        lines.append("Todavía no has definido un origen.")
+    else:
+        lines.append(
+            "Origen actual:"
+            f" <code>{current[0]:.5f}, {current[1]:.5f}</code>"
+        )
+    lines += [
+        "",
+        "Pulsa el botón para enviarla o escríbela a mano:",
+        "<code>/ubicacion 41.3874, 2.1686</code>",
+        "Para borrarla: <code>/ubicacion borrar</code>",
+        "",
+        (
+            "<i>Solo se usa en Wallapop: Vinted no permite filtrar por"
+            " distancia.</i>"
+        ),
+    ]
+    await message.reply_text(
+        "\n".join(lines),
+        parse_mode="HTML",
+        reply_markup=_location_keyboard(),
+    )
+
+
+async def location_shared(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    chat = update.effective_chat
+    if message is None or chat is None or message.location is None:
+        return
+    latitude = message.location.latitude
+    longitude = message.location.longitude
+    await _db(context).set_location(chat.id, latitude, longitude)
+    await message.reply_text(
+        f"📌 Origen guardado: <code>{latitude:.5f}, {longitude:.5f}</code>\n"
+        "Puedes limitar la distancia con"
+        " <code>/editar &lt;id&gt; distancia 25</code>.",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+
 def format_status(stats: dict[str, int], status: dict[str, object]) -> str:
     lines = [
         "🤖 <b>Estado del bot</b>",
@@ -433,9 +568,18 @@ async def test_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lines.append(f"<b>{label}</b>")
         for listing in listings:
             price = format_price(listing.price) if listing.price is not None else "?"
+            extra: list[str] = []
+            distance = listing_distance_km(listing, alert)
+            if distance is not None:
+                extra.append(format_distance(distance))
+            if is_outside_spain(listing.country_code):
+                extra.append(
+                    f"{country_label(listing.country_code)} · fuera de España"
+                )
+            suffix = f" · {' · '.join(extra)}" if extra else ""
             lines.append(
                 f"• <a href=\"{html.escape(listing.url, quote=True)}\">"
-                f"{html.escape(listing.title)}</a> — <b>{price}</b>"
+                f"{html.escape(listing.title)}</a> — <b>{price}</b>{suffix}"
             )
     await send_long(update, "\n".join(lines))
 
@@ -452,7 +596,7 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             update,
             "Uso: <code>/editar &lt;id&gt; &lt;campo&gt; &lt;valor&gt;</code>\n\n"
             "Campos: nombre, palabras, min, max, intervalo, excluir,"
-            " plataformas, estricto, precios, envio.\n"
+            " plataformas, estricto, precios, envio, distancia.\n"
             "Ej.: <code>/editar 3 min 100</code> · "
             "<code>/editar 3 estricto off</code>",
         )
@@ -515,6 +659,21 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await db.update_alert(
                 alert.id, wallapop_shipping=parse_toggle(value)
             )
+        elif field in {"distancia", "radio", "distance"}:
+            radius = parse_distance(value)
+            if radius is not None:
+                if "wallapop" not in alert.platforms:
+                    raise ValueError(
+                        "la distancia solo se aplica a Wallapop; añade esa"
+                        " plataforma primero"
+                    )
+                origin = await db.get_location(alert.chat_id)
+                if origin is None:
+                    raise ValueError(
+                        "primero comparte tu ubicación con /ubicacion y"
+                        " vuelve a intentarlo"
+                    )
+            await db.update_alert(alert.id, radius_km=radius)
         else:
             raise ValueError(f"campo desconocido: {field}")
     except ValueError as exc:
@@ -602,10 +761,206 @@ def _wizard(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
     return context.user_data.setdefault("wizard", {})
 
 
+DISTANCE_PRESETS = (
+    ("none", "🌍 Sin límite (todo el feed)"),
+    ("5", "5 km"),
+    ("10", "10 km"),
+    ("25", "25 km"),
+    ("50", "50 km"),
+    ("100", "100 km"),
+    ("200", "200 km"),
+)
+
+
+def _distance_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    DISTANCE_PRESETS[0][1], callback_data="wizdist:none"
+                )
+            ],
+            [
+                InlineKeyboardButton(label, callback_data=f"wizdist:{value}")
+                for value, label in DISTANCE_PRESETS[1:4]
+            ],
+            [
+                InlineKeyboardButton(label, callback_data=f"wizdist:{value}")
+                for value, label in DISTANCE_PRESETS[4:7]
+            ],
+            [
+                InlineKeyboardButton(
+                    "✏️ Otra distancia", callback_data="wizdist:custom"
+                )
+            ],
+        ]
+    )
+
+
+async def _ask_exclude(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False
+) -> int:
+    text = (
+        "(6/8) Palabras o frases que deben excluirse, separadas por comas."
+        " Ej: <code>roto, para piezas, bisagras</code>.\n"
+        "Escribe <code>-</code> si no quieres excluir nada."
+    )
+    query = update.callback_query
+    if edit and query is not None:
+        await query.edit_message_text(text, parse_mode="HTML")
+    else:
+        await update.effective_message.reply_text(text, parse_mode="HTML")
+    return WIZ_EXCLUDE
+
+
+async def _ask_distance(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False
+) -> int:
+    query = update.callback_query
+    chat = update.effective_chat
+    wizard = _wizard(context)
+
+    if "wallapop" not in wizard.get("platforms", []):
+        wizard["radius_km"] = None
+        text = (
+            "(5/8) Vinted no permite filtrar por distancia: se buscará en"
+            " todo su catálogo.\n\n"
+            "(6/8) Palabras o frases que deben excluirse, separadas por comas."
+            " Ej: <code>roto, para piezas</code>.\n"
+            "Escribe <code>-</code> si no quieres excluir nada."
+        )
+        if edit and query is not None:
+            await query.edit_message_text(text, parse_mode="HTML")
+        else:
+            await update.effective_message.reply_text(
+                text, parse_mode="HTML"
+            )
+        return WIZ_EXCLUDE
+
+    origin = await _db(context).get_location(chat.id) if chat else None
+    if origin is None:
+        origin_line = (
+            "⚠️ Aún no has definido tu ubicación: elige un radio y te pediré"
+            " que la compartas, o usa /ubicacion."
+        )
+    else:
+        origin_line = f"📍 Origen: <code>{origin[0]:.4f}, {origin[1]:.4f}</code>"
+
+    text = (
+        "(5/8) ¿A qué distancia de tu origen busco en Wallapop?\n\n"
+        f"{origin_line}\n\n"
+        "Por defecto <b>sin límite</b>: verás todo el feed, también anuncios"
+        " de Portugal, Italia y otros países."
+    )
+    if edit and query is not None:
+        await query.edit_message_text(
+            text, parse_mode="HTML", reply_markup=_distance_keyboard()
+        )
+    else:
+        await update.effective_message.reply_text(
+            text, parse_mode="HTML", reply_markup=_distance_keyboard()
+        )
+    return WIZ_DISTANCE
+
+
+async def _apply_distance(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    radius: int | None,
+    edit: bool = False,
+) -> int:
+    chat = update.effective_chat
+    wizard = _wizard(context)
+    query = update.callback_query
+
+    if radius is not None:
+        origin = await _db(context).get_location(chat.id) if chat else None
+        if origin is None:
+            wizard["pending_radius_km"] = radius
+            wizard["radius_km"] = None
+            text = (
+                f"📏 Radio elegido: <b>{radius} km</b>.\n\n"
+                "Para aplicarlo necesito tu ubicación: pulsa el botón de abajo"
+                " o usa /ubicacion."
+            )
+            if edit and query is not None:
+                await query.edit_message_text(
+                    text,
+                    parse_mode="HTML",
+                    reply_markup=_location_keyboard(),
+                )
+            else:
+                await update.effective_message.reply_text(
+                    text,
+                    parse_mode="HTML",
+                    reply_markup=_location_keyboard(),
+                )
+            return WIZ_DISTANCE
+
+    wizard.pop("pending_radius_km", None)
+    wizard["radius_km"] = radius
+    return await _ask_exclude(update, context, edit=edit)
+
+
+async def new_distance_choice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    query = update.callback_query
+    assert query is not None
+    await query.answer()
+    choice = query.data.split(":", 1)[1]
+    if choice == "custom":
+        await query.edit_message_text(
+            "(5/8) Escribe el radio en km (1-500) o <code>todo</code> para"
+            " sin límite.",
+            parse_mode="HTML",
+        )
+        return WIZ_DISTANCE
+    radius = None if choice == "none" else int(choice)
+    return await _apply_distance(update, context, radius, edit=True)
+
+
+async def new_distance_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    text = (update.effective_message.text or "").strip()
+    try:
+        radius = parse_distance(text)
+    except ValueError as exc:
+        await update.effective_message.reply_text(f"⚠️ {exc}")
+        return WIZ_DISTANCE
+    return await _apply_distance(update, context, radius, edit=False)
+
+
+async def new_distance_location(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    message = update.effective_message
+    chat = update.effective_chat
+    if message is None or chat is None or message.location is None:
+        return WIZ_DISTANCE
+    await _db(context).set_location(
+        chat.id, message.location.latitude, message.location.longitude
+    )
+    wizard = _wizard(context)
+    radius = wizard.pop("pending_radius_km", None)
+    if radius is not None:
+        wizard["radius_km"] = radius
+    await message.reply_text(
+        "📌 Origen guardado:"
+        f" <code>{message.location.latitude:.5f},"
+        f" {message.location.longitude:.5f}</code>",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return await _ask_exclude(update, context, edit=False)
+
+
+
 async def start_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["wizard"] = {}
     await update.effective_message.reply_text(
-        "🆕 <b>Nueva búsqueda</b> (1/7)\n\n"
+        "🆕 <b>Nueva búsqueda</b> (1/8)\n\n"
         "¿Cómo la llamamos? Ej: <i>PS5 barata</i>\n\n"
         "<i>Escribe /cancelar para salir.</i>",
         parse_mode="HTML",
@@ -627,7 +982,7 @@ async def new_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         ]
     )
     await update.effective_message.reply_text(
-        "(2/7) ¿Dónde buscamos?", reply_markup=keyboard
+        "(2/8) ¿Dónde buscamos?", reply_markup=keyboard
     )
     return WIZ_PLATFORMS
 
@@ -651,7 +1006,7 @@ async def new_platforms(
     label = " + ".join(PLATFORM_LABELS[p] for p in platforms)
     await query.edit_message_text(
         f"🏪 Plataformas: <b>{label}</b>\n\n"
-        "(3/7) ¿Qué palabras clave busco? Ej: <i>playstation 5</i>",
+        "(3/8) ¿Qué palabras clave busco? Ej: <i>playstation 5</i>",
         parse_mode="HTML",
         reply_markup=None,
     )
@@ -669,7 +1024,7 @@ async def new_keywords(
         return WIZ_KEYWORDS
     _wizard(context)["keywords"] = keywords
     await update.effective_message.reply_text(
-        "(4/7) Precio: <code>mín-máx</code>.\n\n"
+        "(4/8) Precio: <code>mín-máx</code>.\n\n"
         "Ejemplos: <code>100-400</code>, <code>100-</code> (solo mínimo),"
         " <code>-400</code> (solo máximo), <code>-</code> (sin filtro).",
         parse_mode="HTML",
@@ -688,13 +1043,7 @@ async def new_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     wizard["min_price"] = minimum
     wizard["max_price"] = maximum
 
-    await update.effective_message.reply_text(
-        "(5/7) Palabras o frases que deben excluirse, separadas por comas."
-        " Ej: <code>roto, para piezas, bisagras</code>.\n"
-        "Escribe <code>-</code> si no quieres excluir nada.",
-        parse_mode="HTML",
-    )
-    return WIZ_EXCLUDE
+    return await _ask_distance(update, context)
 
 
 async def new_exclude(
@@ -705,7 +1054,7 @@ async def new_exclude(
     wizard["exclude_words"] = "" if text == "-" else text
     settings = _settings(context)
     await update.effective_message.reply_text(
-        "(6/7) ¿Cada cuántos segundos reviso?"
+        "(7/8) ¿Cada cuántos segundos reviso?"
         f" Mínimo {settings.min_interval}, por defecto"
         f" {settings.default_interval}. Escribe <code>-</code> para el"
         " valor por defecto.",
@@ -754,7 +1103,7 @@ async def new_interval(
         ]
     )
     await update.effective_message.reply_text(
-        "(7/7) ¿Quieres que avise también de los anuncios que ya existen?"
+        "(8/8) ¿Quieres que avise también de los anuncios que ya existen?"
         "\n\nLo normal es <b>No</b>: solo te llegarán los que se publiquen"
         " a partir de ahora.",
         parse_mode="HTML",
@@ -781,6 +1130,7 @@ async def new_notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             exclude_words=wizard.get("exclude_words", ""),
             interval_seconds=wizard["interval_seconds"],
             notify_existing=notify_existing,
+            radius_km=wizard.get("radius_km"),
         )
     except KeyError:
         await query.edit_message_text(
@@ -816,6 +1166,17 @@ async def new_notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         + (
             f"\n\n📦 Solo avisaré anuncios de Wallapop con envío disponible."
             f" Desactívalo con /editar {alert.id} envio off."
+            if "wallapop" in alert.platforms
+            else ""
+        )
+        + (
+            (
+                f"\n\n📏 Solo avisaré anuncios de Wallapop a menos de"
+                f" {alert.radius_km} km de tu ubicación."
+                if alert.radius_km is not None
+                else "\n\n🌍 Sin límite de distancia: te avisaré de todo el"
+                " feed de Wallapop, también de otros países."
+            )
             if "wallapop" in alert.platforms
             else ""
         )
@@ -934,6 +1295,15 @@ def _build_conversation() -> ConversationHandler:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, new_keywords)
             ],
             WIZ_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_price)],
+            WIZ_DISTANCE: [
+                CallbackQueryHandler(
+                    new_distance_choice, pattern=r"^wizdist:"
+                ),
+                MessageHandler(filters.LOCATION, new_distance_location),
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, new_distance_text
+                ),
+            ],
             WIZ_EXCLUDE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, new_exclude)
             ],
@@ -955,6 +1325,8 @@ def register_handlers(app: Application, settings: Settings) -> None:
     app.add_handler(CommandHandler("lista", list_alerts))
     app.add_handler(CommandHandler("ver", view_alert))
     app.add_handler(CommandHandler("probar", test_alert))
+    app.add_handler(CommandHandler("ubicacion", location_command))
+    app.add_handler(MessageHandler(filters.LOCATION, location_shared))
     app.add_handler(CommandHandler("editar", edit_alert))
     app.add_handler(CommandHandler("avanzado", advanced_alert))
     app.add_handler(CommandHandler("pausar", pause_alert))

@@ -37,6 +37,9 @@ class Listing:
     seller: str | None = None
     description: str | None = None
     created_at: datetime | None = None
+    country_code: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class Source(Protocol):

@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 
 from db import Alert
-from filters import format_price, matches, normalize, parse_price, parse_price_range
+from filters import (
+    format_price,
+    matches,
+    normalize,
+    parse_distance,
+    parse_price,
+    parse_price_range,
+)
 from sources.base import Listing
 
 
@@ -52,6 +59,63 @@ def make_listing(**overrides) -> Listing:
 
 def test_normalize_quita_acentos_y_mayusculas():
     assert normalize("  Bicicleta ELÉCTRICA  ") == "bicicleta electrica"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("25", 25),
+        ("25 km", 25),
+        ("25km", 25),
+        ("200", 200),
+        ("todo", None),
+        ("todos", None),
+        ("-", None),
+        ("0", None),
+        ("sin límite", None),
+        ("", None),
+    ],
+)
+def test_parse_distance(raw, expected):
+    assert parse_distance(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["501", "abc", "-3"])
+def test_parse_distance_valores_invalidos(raw):
+    with pytest.raises(ValueError):
+        parse_distance(raw)
+
+
+def test_matches_descarta_anuncios_fuera_del_radio():
+    alert = make_alert(
+        radius_km=10, origin_latitude=41.3874, origin_longitude=2.1686
+    )
+    near = make_listing(latitude=41.40, longitude=2.17, country_code="ES")
+    far = make_listing(latitude=40.4168, longitude=-3.7038, country_code="ES")
+
+    assert matches(near, alert) is True
+    assert matches(far, alert) is False
+
+
+def test_matches_sin_radio_no_filtra_por_distancia():
+    alert = make_alert(origin_latitude=41.3874, origin_longitude=2.1686)
+    far = make_listing(latitude=40.4168, longitude=-3.7038, country_code="ES")
+
+    assert matches(far, alert) is True
+
+
+def test_matches_solo_aplica_el_radio_a_wallapop():
+    alert = make_alert(
+        radius_km=10,
+        origin_latitude=41.3874,
+        origin_longitude=2.1686,
+        platforms=["vinted"],
+    )
+    far_vinted = make_listing(
+        source="vinted", latitude=40.4168, longitude=-3.7038
+    )
+
+    assert matches(far_vinted, alert) is True
 
 
 @pytest.mark.parametrize(

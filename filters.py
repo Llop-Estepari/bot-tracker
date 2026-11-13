@@ -6,6 +6,8 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING
 
+from geo import haversine_km
+
 if TYPE_CHECKING:
     from db import Alert
     from sources.base import Listing
@@ -70,6 +72,42 @@ def format_price(value: float | None) -> str:
     return f"{value:.2f} €".replace(".", ",")
 
 
+MAX_RADIUS_KM = 500
+
+
+def parse_distance(raw: str) -> int | None:
+    """Interpreta '25', '25 km', 'todo' o '-' (None = sin límite)."""
+    text = normalize(raw).replace("km", "").strip()
+    if text in {
+        "",
+        "-",
+        "0",
+        "todo",
+        "todos",
+        "todas",
+        "sin limite",
+        "sin limites",
+        "sinlimite",
+        "ninguno",
+    }:
+        return None
+    if text.startswith("-") and text != "-":
+        raise ValueError(
+            "usa un número de km (1-500) o 'todo' para sin límite"
+        )
+    try:
+        value = round(float(text.replace(",", ".")))
+    except ValueError as exc:
+        raise ValueError(
+            "usa un número de km (1-500) o 'todo' para sin límite"
+        ) from exc
+    if value <= 0:
+        return None
+    if value > MAX_RADIUS_KM:
+        raise ValueError(f"el radio máximo es {MAX_RADIUS_KM} km")
+    return value
+
+
 def split_words(raw: str) -> list[str]:
     """Separa palabras/frases por comas, punto y coma o saltos de línea."""
     return [
@@ -85,13 +123,32 @@ def keyword_tokens(keywords: str) -> list[str]:
 
 
 def matches(listing: Listing, alert: Alert) -> bool:
-    """Comprueba precio, modo estricto y palabras excluidas."""
+    """Comprueba precio, distancia, modo estricto y palabras excluidas."""
     if alert.min_price is not None or alert.max_price is not None:
         if listing.price is None:
             return False
         if alert.min_price is not None and listing.price < alert.min_price - 0.001:
             return False
         if alert.max_price is not None and listing.price > alert.max_price + 0.001:
+            return False
+
+    # La distancia solo existe en Wallapop. Se comprueba también en local por
+    # si la API ignorara el parámetro o devolviera algo fuera del radio.
+    if (
+        listing.source == "wallapop"
+        and alert.radius_km is not None
+        and alert.origin_latitude is not None
+        and alert.origin_longitude is not None
+        and listing.latitude is not None
+        and listing.longitude is not None
+    ):
+        distance = haversine_km(
+            alert.origin_latitude,
+            alert.origin_longitude,
+            listing.latitude,
+            listing.longitude,
+        )
+        if distance > alert.radius_km:
             return False
 
     if alert.strict_keywords and alert.keywords.strip():

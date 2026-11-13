@@ -26,6 +26,20 @@ USER_AGENT = (
 )
 
 
+def as_float(value: object) -> float | None:
+    """Convierte coordenadas de la API (float, int o str) a float."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def parse_search(payload: dict[str, Any], web_base: str) -> list[Listing]:
     """Convierte la respuesta de /api/v3/search en Listings."""
     section = payload.get("data", {}).get("section") or {}
@@ -55,6 +69,11 @@ def parse_search(payload: dict[str, Any], web_base: str) -> list[Listing]:
             location = f"{city} ({region})"
         else:
             location = city or region
+        country_code = (
+            str(location_data.get("country_code") or "").strip().upper() or None
+        )
+        latitude = as_float(location_data.get("latitude"))
+        longitude = as_float(location_data.get("longitude"))
 
         created_at = None
         timestamp = item.get("created_at")
@@ -80,6 +99,9 @@ def parse_search(payload: dict[str, Any], web_base: str) -> list[Listing]:
                 location=location,
                 description=item.get("description"),
                 created_at=created_at,
+                country_code=country_code,
+                latitude=latitude,
+                longitude=longitude,
             )
         )
     return listings
@@ -127,6 +149,14 @@ class WallapopSource:
             params["category_id"] = alert.wallapop_category_id
         if alert.wallapop_shipping:
             params["is_shippable"] = True
+        if (
+            alert.radius_km is not None
+            and alert.origin_latitude is not None
+            and alert.origin_longitude is not None
+        ):
+            params["latitude"] = alert.origin_latitude
+            params["longitude"] = alert.origin_longitude
+            params["distance_in_km"] = alert.radius_km
         return params
 
     async def search(self, alert: Alert) -> list[Listing]:

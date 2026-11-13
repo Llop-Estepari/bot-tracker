@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     max_price REAL,
     wallapop_category_id INTEGER,
     wallapop_shipping INTEGER NOT NULL DEFAULT 1,
+    radius_km INTEGER,
     vinted_catalog_ids TEXT NOT NULL DEFAULT '',
     vinted_brand_ids TEXT NOT NULL DEFAULT '',
     vinted_condition_ids TEXT NOT NULL DEFAULT '',
@@ -47,6 +48,13 @@ CREATE TABLE IF NOT EXISTS seen_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_seen_first_seen ON seen_items(first_seen_at);
+
+CREATE TABLE IF NOT EXISTS user_locations (
+    chat_id INTEGER PRIMARY KEY,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 LIST_FIELDS = {
@@ -64,6 +72,7 @@ UPDATABLE_FIELDS = {
     "max_price",
     "wallapop_category_id",
     "wallapop_shipping",
+    "radius_km",
     "vinted_catalog_ids",
     "vinted_brand_ids",
     "vinted_condition_ids",
@@ -122,6 +131,10 @@ class Alert:
     active: bool
     created_at: str
     last_checked_at: str | None
+    radius_km: int | None = None
+    # Origen del chat, resuelto al leer la alerta (no es una columna).
+    origin_latitude: float | None = None
+    origin_longitude: float | None = None
 
 
 @dataclass
@@ -134,6 +147,7 @@ class NewAlert:
     max_price: float | None = None
     wallapop_category_id: int | None = None
     wallapop_shipping: bool = True
+    radius_km: int | None = None
     vinted_catalog_ids: list[int] = field(default_factory=list)
     vinted_brand_ids: list[int] = field(default_factory=list)
     vinted_condition_ids: list[int] = field(default_factory=list)
@@ -142,6 +156,14 @@ class NewAlert:
     interval_seconds: int = 90
     notify_existing: bool = False
     notify_price_changes: bool = True
+
+
+def _optional(row: aiosqlite.Row, key: str, default: Any = None) -> Any:
+    """Lee una columna que puede no estar en la consulta."""
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return default
 
 
 def _row_to_alert(row: aiosqlite.Row) -> Alert:
@@ -167,6 +189,9 @@ def _row_to_alert(row: aiosqlite.Row) -> Alert:
         active=bool(row["active"]),
         created_at=row["created_at"],
         last_checked_at=row["last_checked_at"],
+        radius_km=_optional(row, "radius_km"),
+        origin_latitude=_optional(row, "origin_latitude"),
+        origin_longitude=_optional(row, "origin_longitude"),
     )
 
 
@@ -217,16 +242,26 @@ class Database:
                 " INTEGER NOT NULL DEFAULT 1"
             )
 
-        for obsolete in ("latitude", "longitude", "radius_km"):
+        dropped_coordinates = False
+        for obsolete in ("latitude", "longitude"):
             if obsolete in columns:
                 try:
                     await self.conn.execute(
                         f"ALTER TABLE alerts DROP COLUMN {obsolete}"
                     )
+                    dropped_coordinates = True
                 except aiosqlite.Error:
                     logger.warning(
                         "No se pudo eliminar la columna obsoleta %s", obsolete
                     )
+
+        if "radius_km" not in columns:
+            await self.conn.execute(
+                "ALTER TABLE alerts ADD COLUMN radius_km INTEGER"
+            )
+        elif dropped_coordinates:
+            # El radio antiguo apuntaba a coordenadas que ya no existen.
+            await self.conn.execute("UPDATE alerts SET radius_km = NULL")
 
         async with self.conn.execute("PRAGMA table_info(seen_items)") as cursor:
             seen_columns = {row["name"] for row in await cursor.fetchall()}
@@ -247,11 +282,11 @@ class Database:
             """
             INSERT INTO alerts (
                 chat_id, name, platforms, keywords, min_price, max_price,
-                wallapop_category_id, wallapop_shipping,
+                wallapop_category_id, wallapop_shipping, radius_km,
                 vinted_catalog_ids, vinted_brand_ids, vinted_condition_ids,
                 exclude_words, strict_keywords, interval_seconds,
                 notify_existing, notify_price_changes, seeded, active, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
             """,
             (
                 new.chat_id,
@@ -262,6 +297,7 @@ class Database:
                 new.max_price,
                 new.wallapop_category_id,
                 int(new.wallapop_shipping),
+                new.radius_km,
                 ",".join(str(v) for v in new.vinted_catalog_ids),
                 ",".join(str(v) for v in new.vinted_brand_ids),
                 ",".join(str(v) for v in new.vinted_condition_ids),
@@ -281,7 +317,14 @@ class Database:
 
     async def get_alert(self, alert_id: int) -> Alert | None:
         async with self.conn.execute(
-            "SELECT * FROM alerts WHERE id = ?", (alert_id,)
+            """
+            SELECT a.*, l.latitude AS origin_latitude,
+                   l.longitude AS origin_longitude
+            FROM alerts a
+            LEFT JOIN user_locations l ON l.chat_id = a.chat_id
+            WHERE a.id = ?
+            """,
+            (alert_id,),
         ) as cursor:
             row = await cursor.fetchone()
         return _row_to_alert(row) if row is not None else None
@@ -292,14 +335,19 @@ class Database:
         clauses: list[str] = []
         params: list[Any] = []
         if chat_id is not None:
-            clauses.append("chat_id = ?")
+            clauses.append("a.chat_id = ?")
             params.append(chat_id)
         if active_only:
-            clauses.append("active = 1")
-        query = "SELECT * FROM alerts"
+            clauses.append("a.active = 1")
+        query = (
+            "SELECT a.*, l.latitude AS origin_latitude,"
+            " l.longitude AS origin_longitude"
+            " FROM alerts a"
+            " LEFT JOIN user_locations l ON l.chat_id = a.chat_id"
+        )
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id"
+        query += " ORDER BY a.id"
         async with self.conn.execute(query, params) as cursor:
             rows = await cursor.fetchall()
         return [_row_to_alert(row) for row in rows]
@@ -337,6 +385,44 @@ class Database:
             (utcnow_iso(), alert_id),
         )
         await self.conn.commit()
+
+    # ------------------------- ubicación del chat ------------------------- #
+
+    async def get_location(
+        self, chat_id: int
+    ) -> tuple[float, float] | None:
+        """Origen (latitud, longitud) guardado para un chat."""
+        async with self.conn.execute(
+            "SELECT latitude, longitude FROM user_locations WHERE chat_id = ?",
+            (chat_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return float(row["latitude"]), float(row["longitude"])
+
+    async def set_location(
+        self, chat_id: int, latitude: float, longitude: float
+    ) -> None:
+        await self.conn.execute(
+            """
+            INSERT INTO user_locations (chat_id, latitude, longitude, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                latitude = excluded.latitude,
+                longitude = excluded.longitude,
+                updated_at = excluded.updated_at
+            """,
+            (chat_id, latitude, longitude, utcnow_iso()),
+        )
+        await self.conn.commit()
+
+    async def delete_location(self, chat_id: int) -> bool:
+        cursor = await self.conn.execute(
+            "DELETE FROM user_locations WHERE chat_id = ?", (chat_id,)
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
 
     # -------------------------- anuncios vistos ------------------------- #
 

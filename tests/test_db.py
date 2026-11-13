@@ -79,6 +79,7 @@ async def test_crear_y_leer_alerta(database):
     assert alert.notify_price_changes is True
     assert alert.wallapop_shipping is True
     assert alert.strict_keywords is True
+    assert alert.radius_km is None
 
     fetched = await database.get_alert(alert.id)
     assert fetched is not None
@@ -182,11 +183,53 @@ async def test_migracion_anade_columnas_de_precio(tmp_path):
         assert "wallapop_shipping" in alert_columns
         assert "latitude" not in alert_columns
         assert "longitude" not in alert_columns
-        assert "radius_km" not in alert_columns
+        assert "radius_km" in alert_columns
         assert "strict_keywords" in alert_columns
         assert "last_price" in seen_columns
     finally:
         await database.close()
+
+
+async def test_radio_por_defecto_es_sin_limite(database):
+    alert = await database.create_alert(make_new_alert())
+
+    assert alert.radius_km is None
+    updated = await database.update_alert(alert.id, radius_km=25)
+    assert updated is not None
+    assert updated.radius_km == 25
+
+    cleared = await database.update_alert(alert.id, radius_km=None)
+    assert cleared is not None
+    assert cleared.radius_km is None
+
+
+async def test_ubicacion_del_chat(database):
+    assert await database.get_location(123) is None
+
+    await database.set_location(123, 41.3874, 2.1686)
+    assert await database.get_location(123) == (41.3874, 2.1686)
+
+    await database.set_location(123, 40.4168, -3.7038)
+    assert await database.get_location(123) == (40.4168, -3.7038)
+
+    assert await database.delete_location(123) is True
+    assert await database.get_location(123) is None
+    assert await database.delete_location(123) is False
+
+
+async def test_la_alerta_hereda_el_origen_del_chat(database):
+    await database.set_location(123, 41.3874, 2.1686)
+    alert = await database.create_alert(make_new_alert(chat_id=123))
+
+    assert alert.origin_latitude == 41.3874
+    assert alert.origin_longitude == 2.1686
+
+    fetched = await database.get_alert(alert.id)
+    assert fetched is not None
+    assert fetched.origin_latitude == 41.3874
+
+    listed = await database.list_alerts(chat_id=123)
+    assert listed[0].origin_longitude == 2.1686
 
 
 async def test_migracion_readd_strict_keywords(tmp_path):

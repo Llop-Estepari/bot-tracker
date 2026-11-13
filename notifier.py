@@ -28,18 +28,17 @@ def _listing_lines(
     listing: Listing, price_line: str | None = None
 ) -> list[str]:
     title = html.escape(listing.title)[:220]
-    lines = [f"🛒 <b>{title}</b>"]
+    lines = [f"🛒 <b>{title}</b>", ""]
     if price_line is not None:
         lines.append(price_line)
     elif listing.price is not None:
         lines.append(f"💶 <b>{format_price(listing.price)}</b>")
     if listing.location:
-        lines.append(f"📍 {html.escape(listing.location)}")
+        lines.append(f"📍 <i>{html.escape(listing.location)}</i>")
     if listing.seller:
-        lines.append(f"👤 {html.escape(listing.seller)}")
+        lines.append(f"👤 <i>{html.escape(listing.seller)}</i>")
     source = SOURCE_LABELS.get(listing.source, listing.source.title())
-    link = html.escape(listing.url, quote=True)
-    lines.append(f"🏪 {source} · <a href=\"{link}\">ver anuncio</a>")
+    lines.append(f"🏪 <i>{source}</i>")
     return lines
 
 
@@ -52,6 +51,10 @@ def build_price_change_caption(listing: Listing, old_price: float) -> str:
         f"💶 <s>{format_price(old_price)}</s> →"
         f" <b>{format_price(listing.price)}</b>"
     )
+    if listing.price is not None and old_price > 0:
+        percent = (old_price - listing.price) / old_price * 100
+        if percent > 0:
+            price_line += f" · <i>-{percent:.0f}%</i>"
     lines = [
         "📉 <b>¡Baja de precio!</b>",
         *_listing_lines(listing, price_line),

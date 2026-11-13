@@ -119,17 +119,14 @@ class WallapopSource:
             "order_by": "newest",
             "limit": 40,
         }
-        if alert.latitude is not None and alert.longitude is not None:
-            params["latitude"] = alert.latitude
-            params["longitude"] = alert.longitude
-            if alert.radius_km:
-                params["distance_in_km"] = alert.radius_km
         if alert.min_price is not None:
             params["min_sale_price"] = alert.min_price
         if alert.max_price is not None:
             params["max_sale_price"] = alert.max_price
         if alert.wallapop_category_id:
             params["category_id"] = alert.wallapop_category_id
+        if alert.wallapop_shipping:
+            params["is_shippable"] = True
         return params
 
     async def search(self, alert: Alert) -> list[Listing]:

@@ -3,9 +3,9 @@
 Bot personal que vigila búsquedas en **Wallapop** y **Vinted** y te avisa por
 Telegram en cuanto aparece un anuncio nuevo que encaja con tus filtros.
 
-- Filtros por palabras clave, precio, zona/radio (Wallapop), marcas,
-  categorías y estado (Vinted).
-- Palabras excluidas y **modo estricto** para eliminar resultados irrelevantes.
+- Filtros por palabras clave, precio, envío (Wallapop), marcas, categorías y
+  estado (Vinted).
+- Palabras excluidas para eliminar resultados irrelevantes.
 - Cada búsqueda tiene su propio intervalo (60 s – 1 h, por defecto 90 s).
 - Deduplicación en SQLite: nunca recibes dos veces el mismo anuncio.
 - Aviso de **bajada de precio** cuando un anuncio ya visto se abarata
@@ -82,12 +82,14 @@ El asistente pide, paso a paso:
 3. **Palabras clave** — lo que buscará la plataforma.
 4. **Precio** — `100-400`, `100-` (solo mínimo), `-400` (solo máximo),
    `-` (sin filtro).
-5. **Zona** (solo Wallapop) — `Madrid`, `Madrid 30` (30 km de radio),
-   `40.4168,-3.7038` o `-` para toda España.
-6. **Palabras excluidas** — `roto, para piezas, sin mando`.
-7. **Intervalo** — segundos entre comprobaciones (mínimo 60, defecto 90).
-8. **¿Avisar de anuncios ya publicados?** — normalmente **No**: solo
+5. **Palabras excluidas** — `roto, para piezas, sin mando` (puede quedar vacío
+   con `-`).
+6. **Intervalo** — segundos entre comprobaciones (mínimo 60, defecto 90).
+7. **¿Avisar de anuncios ya publicados?** — normalmente **No**: solo
    recibirás los que se publiquen a partir de ahora.
+
+En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
+`/editar <id> envio off`.
 
 ### Comandos
 
@@ -97,7 +99,7 @@ El asistente pide, paso a paso:
 | `/lista` | Ver todas tus búsquedas |
 | `/ver <id>` | Detalle de una búsqueda |
 | `/probar <id>` | Consultar ahora y ver resultados sin guardar nada |
-| `/editar <id> <campo> <valor>` | Modificar nombre, palabras, precio, zona, intervalo… |
+| `/editar <id> <campo> <valor>` | Modificar nombre, palabras, precio, envío, intervalo… |
 | `/avanzado <id> clave=valor` | Categorías, marcas y estado (IDs de las webs) |
 | `/pausar <id>` / `/reanudar <id>` | Pausar o reactivar |
 | `/borrar <id>` | Eliminar (con confirmación) |
@@ -111,18 +113,17 @@ El asistente pide, paso a paso:
 /editar 3 max 400
 /editar 3 palabras iphone 13 pro
 /editar 3 excluir roto, sin caja
-/editar 3 zona Madrid 30
 /editar 3 plataformas ambas
 /editar 3 intervalo 120
-/editar 3 estricto off
+/editar 3 envio off
 /editar 3 precios off
 ```
 
-El **modo estricto** está activo por defecto: descarta anuncios cuyo título no
-contenga al menos una palabra clave (con al menos 3 letras). Vinted devuelve
-resultados bastante difusos, así que ayuda mucho. Desactívalo si crees que se
-te escapan anuncios por usar siglas (por ejemplo, títulos que solo dicen
-«PS5» para una búsqueda «playstation 5»).
+El **filtro de envío** de Wallapop está activo por defecto: solo se avisan
+anuncios con envío disponible. Desactívalo con `/editar <id> envio off`.
+
+Los **términos excluidos** son opcionales y pueden quedar vacíos:
+`/editar <id> excluir -`.
 
 ### Filtros avanzados
 
@@ -160,9 +161,9 @@ Usa `-` como valor para borrar un filtro.
   apareciendo en los resultados y siga cumpliendo los filtros; las APIs
   devuelven las primeras posiciones ordenadas por novedad, así que un anuncio
   muy antiguo puede salir de esa ventana.
-- Filtros server-side: palabras, precio, zona, categoría, marca y estado.
-- Filtros client-side: modo estricto, palabras excluidas y comprobación
-  defensiva de precio.
+- Filtros server-side: palabras, precio, envío (Wallapop), categoría, marca y
+  estado.
+- Filtros client-side: palabras excluidas y comprobación defensiva de precio.
 - Ante `429` la plataforma se enfría 3 minutos; ante `403` (bloqueo), 15
   minutos. El resto de plataformas siguen funcionando.
 - Wallapop se consulta con `httpx` y las cabeceras de su web; si responde 403, la plataforma se enfría.
@@ -363,23 +364,20 @@ El bot renueva las cookies solo. Desde una IP residencial/móvil no suele
 ocurrir. Si persiste, puede que Vinted haya cambiado el endpoint
 (`/svc-catalogue/items`): revisa `sources/vinted.py`.
 
-**La geocodificación falla**
-Se usa Nominatim (OpenStreetMap). Si no encuentra la ciudad, introduce las
-coordenadas directamente: `/editar 3 zona 40.4168,-3.7038`.
-
 **No llegan avisos**
 Comprueba `/estado` (¿la alerta está activa? ¿hay plataformas enfriando?),
 lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/bot.log` (o entra con
 `tmux attach -t bot`).
 
-**Cambiar de país**
+**Cambiar de país en Vinted**
 Ajusta en `.env`:
 
 ```env
-WALLAPOP_BASE_URL=https://it.wallapop.com
 VINTED_BASE_URL=https://www.vinted.fr
 VINTED_LOCALE=fr-FR
 ```
+
+Wallapop no permite filtrar por país: usa su feed por defecto.
 
 ## 10. Estructura del proyecto
 
@@ -387,8 +385,7 @@ VINTED_LOCALE=fr-FR
 main.py              Arranque: Telegram + scheduler
 config.py            Configuración desde .env
 db.py                SQLite: alertas y anuncios vistos
-filters.py           Filtros de cliente (modo estricto, exclusiones, precio)
-geocode.py           Ciudades → coordenadas (Nominatim)
+filters.py           Filtros de cliente (exclusiones y precio)
 notifier.py          Mensajes de Telegram
 scheduler.py         Bucle de comprobación y deduplicación
 sources/wallapop.py  Cliente de Wallapop

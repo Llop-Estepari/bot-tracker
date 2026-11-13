@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
+
+logger = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS alerts (
@@ -18,15 +21,12 @@ CREATE TABLE IF NOT EXISTS alerts (
     keywords TEXT NOT NULL DEFAULT '',
     min_price REAL,
     max_price REAL,
-    latitude REAL,
-    longitude REAL,
-    radius_km INTEGER,
     wallapop_category_id INTEGER,
+    wallapop_shipping INTEGER NOT NULL DEFAULT 1,
     vinted_catalog_ids TEXT NOT NULL DEFAULT '',
     vinted_brand_ids TEXT NOT NULL DEFAULT '',
     vinted_condition_ids TEXT NOT NULL DEFAULT '',
     exclude_words TEXT NOT NULL DEFAULT '',
-    strict_keywords INTEGER NOT NULL DEFAULT 1,
     interval_seconds INTEGER NOT NULL,
     notify_existing INTEGER NOT NULL DEFAULT 0,
     notify_price_changes INTEGER NOT NULL DEFAULT 1,
@@ -61,15 +61,12 @@ UPDATABLE_FIELDS = {
     "keywords",
     "min_price",
     "max_price",
-    "latitude",
-    "longitude",
-    "radius_km",
     "wallapop_category_id",
+    "wallapop_shipping",
     "vinted_catalog_ids",
     "vinted_brand_ids",
     "vinted_condition_ids",
     "exclude_words",
-    "strict_keywords",
     "interval_seconds",
     "notify_existing",
     "notify_price_changes",
@@ -109,15 +106,12 @@ class Alert:
     keywords: str
     min_price: float | None
     max_price: float | None
-    latitude: float | None
-    longitude: float | None
-    radius_km: int | None
     wallapop_category_id: int | None
+    wallapop_shipping: bool
     vinted_catalog_ids: list[int]
     vinted_brand_ids: list[int]
     vinted_condition_ids: list[int]
     exclude_words: str
-    strict_keywords: bool
     interval_seconds: int
     notify_existing: bool
     notify_price_changes: bool
@@ -135,15 +129,12 @@ class NewAlert:
     keywords: str
     min_price: float | None = None
     max_price: float | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    radius_km: int | None = None
     wallapop_category_id: int | None = None
+    wallapop_shipping: bool = True
     vinted_catalog_ids: list[int] = field(default_factory=list)
     vinted_brand_ids: list[int] = field(default_factory=list)
     vinted_condition_ids: list[int] = field(default_factory=list)
     exclude_words: str = ""
-    strict_keywords: bool = True
     interval_seconds: int = 90
     notify_existing: bool = False
     notify_price_changes: bool = True
@@ -158,15 +149,12 @@ def _row_to_alert(row: aiosqlite.Row) -> Alert:
         keywords=row["keywords"],
         min_price=row["min_price"],
         max_price=row["max_price"],
-        latitude=row["latitude"],
-        longitude=row["longitude"],
-        radius_km=row["radius_km"],
         wallapop_category_id=row["wallapop_category_id"],
+        wallapop_shipping=bool(row["wallapop_shipping"]),
         vinted_catalog_ids=_csv_ints(row["vinted_catalog_ids"]),
         vinted_brand_ids=_csv_ints(row["vinted_brand_ids"]),
         vinted_condition_ids=_csv_ints(row["vinted_condition_ids"]),
         exclude_words=row["exclude_words"],
-        strict_keywords=bool(row["strict_keywords"]),
         interval_seconds=row["interval_seconds"],
         notify_existing=bool(row["notify_existing"]),
         notify_price_changes=bool(row["notify_price_changes"]),
@@ -200,12 +188,14 @@ class Database:
         await self._conn.commit()
 
     async def _migrate(self) -> None:
-        """Añade columnas nuevas a bases de datos creadas por versiones previas."""
+        """Actualiza el esquema de bases de datos creadas por versiones previas."""
         async with self.conn.execute("PRAGMA table_info(alerts)") as cursor:
             columns = {row["name"] for row in await cursor.fetchall()}
-        if "strict_keywords" not in columns:
+
+        if "wallapop_shipping" not in columns:
             await self.conn.execute(
-                "ALTER TABLE alerts ADD COLUMN strict_keywords INTEGER NOT NULL DEFAULT 0"
+                "ALTER TABLE alerts ADD COLUMN wallapop_shipping"
+                " INTEGER NOT NULL DEFAULT 1"
             )
         if "seeded" not in columns:
             await self.conn.execute(
@@ -216,6 +206,17 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN notify_price_changes"
                 " INTEGER NOT NULL DEFAULT 1"
             )
+
+        for obsolete in ("latitude", "longitude", "radius_km", "strict_keywords"):
+            if obsolete in columns:
+                try:
+                    await self.conn.execute(
+                        f"ALTER TABLE alerts DROP COLUMN {obsolete}"
+                    )
+                except aiosqlite.Error:
+                    logger.warning(
+                        "No se pudo eliminar la columna obsoleta %s", obsolete
+                    )
 
         async with self.conn.execute("PRAGMA table_info(seen_items)") as cursor:
             seen_columns = {row["name"] for row in await cursor.fetchall()}
@@ -236,11 +237,11 @@ class Database:
             """
             INSERT INTO alerts (
                 chat_id, name, platforms, keywords, min_price, max_price,
-                latitude, longitude, radius_km, wallapop_category_id,
+                wallapop_category_id, wallapop_shipping,
                 vinted_catalog_ids, vinted_brand_ids, vinted_condition_ids,
-                exclude_words, strict_keywords, interval_seconds,
+                exclude_words, interval_seconds,
                 notify_existing, notify_price_changes, seeded, active, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
             """,
             (
                 new.chat_id,
@@ -249,15 +250,12 @@ class Database:
                 new.keywords,
                 new.min_price,
                 new.max_price,
-                new.latitude,
-                new.longitude,
-                new.radius_km,
                 new.wallapop_category_id,
+                int(new.wallapop_shipping),
                 ",".join(str(v) for v in new.vinted_catalog_ids),
                 ",".join(str(v) for v in new.vinted_brand_ids),
                 ",".join(str(v) for v in new.vinted_condition_ids),
                 new.exclude_words,
-                int(new.strict_keywords),
                 new.interval_seconds,
                 int(new.notify_existing),
                 int(new.notify_price_changes),

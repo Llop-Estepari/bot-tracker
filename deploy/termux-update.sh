@@ -149,7 +149,7 @@ else
 fi
 
 .venv/bin/python -m compileall -q \
-    main.py config.py db.py filters.py geocode.py notifier.py \
+    main.py config.py db.py filters.py notifier.py \
     scheduler.py bot sources scripts
 
 echo

@@ -18,15 +18,12 @@ def make_alert(**overrides) -> Alert:
         "keywords": "ps5",
         "min_price": None,
         "max_price": None,
-        "latitude": None,
-        "longitude": None,
-        "radius_km": None,
         "wallapop_category_id": None,
+        "wallapop_shipping": True,
         "vinted_catalog_ids": [],
         "vinted_brand_ids": [],
         "vinted_condition_ids": [],
         "exclude_words": "",
-        "strict_keywords": False,
         "interval_seconds": 90,
         "notify_existing": False,
         "notify_price_changes": True,
@@ -115,16 +112,8 @@ def test_matches_precio_desconocido_con_filtro():
     assert matches(make_listing(price=None), alert) is False
 
 
-def test_modo_estricto_exige_palabra_clave_en_el_titulo():
-    alert = make_alert(strict_keywords=True, keywords="playstation 5")
-    assert matches(make_listing(title="PlayStation 5 Slim"), alert) is True
-    assert matches(make_listing(title="Comando personalizado GTA6"), alert) is False
-    # Limitación conocida: las siglas solas no coinciden con el nombre completo.
-    assert matches(make_listing(title="PS5 digital"), alert) is False
-
-
-def test_modo_estricto_se_desactiva():
-    alert = make_alert(strict_keywords=False, keywords="playstation 5")
+def test_matches_sin_modo_estricto():
+    alert = make_alert(keywords="playstation 5")
     assert matches(make_listing(title="Comando personalizado GTA6"), alert) is True
 
 

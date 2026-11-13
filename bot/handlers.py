@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import html
 import logging
-import re
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -25,7 +24,6 @@ from telegram.warnings import PTBUserWarning
 
 from db import Alert, Database, NewAlert
 from filters import format_price, parse_price, parse_price_range
-from geocode import GeocodeError, geocode
 from notifier import Notifier
 from version import __release_date__, __version__
 
@@ -36,7 +34,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PLATFORM_LABELS = {"wallapop": "Wallapop", "vinted": "Vinted"}
-DEFAULT_RADIUS_KM = 20
 
 HELP_TEXT = """🤖 <b>Tracker de Wallapop y Vinted</b>
 
@@ -53,21 +50,22 @@ Creo búsquedas con filtros y te aviso por aquí cada vez que aparece un anuncio
 
 <b>Campos de /editar</b>
 <code>nombre</code>, <code>palabras</code>, <code>min</code>, <code>max</code>,
-<code>radio</code>, <code>intervalo</code>, <code>excluir</code>,
-<code>plataformas</code>, <code>zona</code>, <code>estricto</code>,
-<code>precios</code>
+<code>intervalo</code>, <code>excluir</code>, <code>plataformas</code>,
+<code>envio</code>, <code>precios</code>
 
-El <b>modo estricto</b> (activado por defecto) descarta anuncios cuyo título
-no contenga ninguna palabra clave. Desactívalo con
-<code>/editar 3 estricto off</code> si crees que se te escapan anuncios
-(por ejemplo, títulos que solo usan siglas).
+El <b>filtro de envío</b> de Wallapop está activado por defecto: solo se
+avisan anuncios con envío disponible. Desactívalo con
+<code>/editar 3 envio off</code>.
+
+Los <b>términos excluidos</b> son opcionales: <code>/editar 3 excluir -</code>
+los borra.
 
 Las <b>bajadas de precio</b> de anuncios ya vistos se avisan por defecto.
 Desactívalas con <code>/editar 3 precios off</code>.
 
 <b>Ejemplos</b>
 <code>/editar 3 min 100</code>
-<code>/editar 3 zona Madrid 30</code>
+<code>/editar 3 envio off</code>
 <code>/editar 3 plataformas ambas</code>
 <code>/avanzado 3 vinted_brand=53,417</code>
 
@@ -83,11 +81,10 @@ Cuando recibas un aviso, el botón «Silenciar búsqueda» pausa esa alerta.
     WIZ_PLATFORMS,
     WIZ_KEYWORDS,
     WIZ_PRICE,
-    WIZ_LOCATION,
     WIZ_EXCLUDE,
     WIZ_INTERVAL,
     WIZ_NOTIFY,
-) = range(8)
+) = range(7)
 
 
 # --------------------------------------------------------------------------- #
@@ -144,9 +141,9 @@ def format_alert(alert: Alert) -> str:
         PLATFORM_LABELS.get(platform, platform) for platform in alert.platforms
     )
     lines = [f"<b>#{alert.id} · {html.escape(alert.name)}</b>"]
-    lines.append(f"🏪 {platforms}")
+    lines.append(f"🏪 <i>{platforms}</i>")
     if alert.keywords:
-        lines.append(f"🔎 {html.escape(alert.keywords)}")
+        lines.append(f"🔎 <code>{html.escape(alert.keywords)}</code>")
     if alert.min_price is not None or alert.max_price is not None:
         minimum = (
             format_price(alert.min_price)
@@ -158,14 +155,16 @@ def format_alert(alert: Alert) -> str:
             if alert.max_price is not None
             else "sin máximo"
         )
-        lines.append(f"💶 {minimum} – {maximum}")
-    if alert.latitude is not None and alert.longitude is not None:
-        radius = alert.radius_km or DEFAULT_RADIUS_KM
-        lines.append(
-            f"📍 radio {radius} km · {alert.latitude:.4f}, {alert.longitude:.4f}"
+        lines.append(f"💶 <b>{minimum} – {maximum}</b>")
+    if "wallapop" in alert.platforms:
+        shipping = (
+            "📦 <i>solo con envío</i>"
+            if alert.wallapop_shipping
+            else "📦 <i>envío indiferente</i>"
         )
+        lines.append(shipping)
     if alert.exclude_words:
-        lines.append(f"🚫 excluye: {html.escape(alert.exclude_words)}")
+        lines.append(f"🚫 <i>excluye: {html.escape(alert.exclude_words)}</i>")
 
     extra: list[str] = []
     if alert.wallapop_category_id:
@@ -183,18 +182,21 @@ def format_alert(alert: Alert) -> str:
             "estado " + ",".join(str(v) for v in alert.vinted_condition_ids)
         )
     if extra:
-        lines.append("🎛 " + " · ".join(extra))
+        lines.append("🎛 <i>" + " · ".join(extra) + "</i>")
 
-    status = "🟢 activa" if alert.active else "⏸ pausada"
-    strict = " · 🎯 estricto" if alert.strict_keywords else ""
+    status = "🟢 <b>activa</b>" if alert.active else "⏸ <b>pausada</b>"
     price_alerts = (
-        " · 📉 precio" if alert.notify_price_changes else " · 📉 precio off"
+        "📉 <i>precio</i>"
+        if alert.notify_price_changes
+        else "📉 <i>precio off</i>"
     )
     lines.append(
-        f"⏱ cada {alert.interval_seconds}s · {status}{strict}{price_alerts}"
+        f"⏱ <i>cada {alert.interval_seconds}s</i> · {status} · {price_alerts}"
     )
     lines.append(
-        "👁 última comprobación: " + html.escape(alert.last_checked_at or "nunca")
+        "👁 <i>última comprobación: "
+        + html.escape(alert.last_checked_at or "nunca")
+        + "</i>"
     )
     return "\n".join(lines)
 
@@ -268,39 +270,6 @@ def parse_toggle(value: str) -> bool:
     if normalized in {"off", "no", "false", "0", "desactivar"}:
         return False
     raise ValueError("usa on u off")
-
-
-async def parse_location_input(
-    value: str, default_radius: int = DEFAULT_RADIUS_KM
-) -> tuple[float | None, float | None, int | None]:
-    """Acepta '-', 'lat,lon[,radio]' o 'Ciudad [radio]'."""
-    text = value.strip()
-    if text.lower() in {"-", "sin zona", "ninguna", "nada", "no"}:
-        return None, None, None
-
-    match = re.fullmatch(
-        r"\s*(-?\d+(?:[.,]\d+)?)\s*,\s*(-?\d+(?:[.,]\d+)?)"
-        r"\s*(?:,\s*(\d{1,3}))?\s*",
-        text,
-    )
-    if match:
-        latitude = float(match.group(1).replace(",", "."))
-        longitude = float(match.group(2).replace(",", "."))
-        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
-            raise ValueError("las coordenadas están fuera de rango")
-        radius = int(match.group(3)) if match.group(3) else default_radius
-        return latitude, longitude, radius
-
-    query = text
-    radius = default_radius
-    parts = text.rsplit(maxsplit=1)
-    if len(parts) == 2 and parts[1].isdigit():
-        candidate = int(parts[1])
-        if 1 <= candidate <= 500:
-            query, radius = parts[0], candidate
-
-    latitude, longitude = await geocode(query)
-    return latitude, longitude, radius
 
 
 # --------------------------------------------------------------------------- #
@@ -396,11 +365,20 @@ async def delete_alert(
 
 def format_status(stats: dict[str, int], status: dict[str, object]) -> str:
     lines = [
-        "🤖 <b>Estado</b>",
-        f"🧩 Versión: <b>v{__version__}</b> · {__release_date__}",
-        f"⏳ Activo desde hace {format_uptime(int(status['uptime_seconds']))}",
-        f"🔎 {stats['active_alerts']} búsquedas activas de {stats['alerts']}",
-        f"👁 {stats['seen_items']} anuncios registrados",
+        "🤖 <b>Estado del bot</b>",
+        (
+            f"🧩 <b>Versión:</b> <code>v{__version__}</code> ·"
+            f" <i>{__release_date__}</i>"
+        ),
+        (
+            f"⏳ <b>Activo:</b>"
+            f" <i>{format_uptime(int(status['uptime_seconds']))}</i>"
+        ),
+        (
+            f"🔎 <b>Búsquedas:</b> {stats['active_alerts']} activas de"
+            f" {stats['alerts']}"
+        ),
+        f"👁 <b>Anuncios:</b> {stats['seen_items']} registrados",
     ]
     cooldowns = status.get("cooldowns") or {}
     if cooldowns:
@@ -408,7 +386,7 @@ def format_status(stats: dict[str, int], status: dict[str, object]) -> str:
             f"{PLATFORM_LABELS.get(platform, platform)} {int(seconds)}s"
             for platform, seconds in dict(cooldowns).items()
         )
-        lines.append(f"🚧 Enfriando por límites: {text}")
+        lines.append(f"🚧 <b>Enfriando:</b> <i>{text}</i>")
     return "\n".join(lines)
 
 
@@ -450,7 +428,7 @@ async def test_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             price = format_price(listing.price) if listing.price is not None else "?"
             lines.append(
                 f"• <a href=\"{html.escape(listing.url, quote=True)}\">"
-                f"{html.escape(listing.title)}</a> — {price}"
+                f"{html.escape(listing.title)}</a> — <b>{price}</b>"
             )
     await send_long(update, "\n".join(lines))
 
@@ -466,10 +444,10 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await send_long(
             update,
             "Uso: <code>/editar &lt;id&gt; &lt;campo&gt; &lt;valor&gt;</code>\n\n"
-            "Campos: nombre, palabras, min, max, radio, intervalo, excluir,"
-            " plataformas, zona, precios.\n"
+            "Campos: nombre, palabras, min, max, intervalo, excluir,"
+            " plataformas, precios, envio.\n"
             "Ej.: <code>/editar 3 min 100</code> · "
-            "<code>/editar 3 zona Madrid 30</code>",
+            "<code>/editar 3 envio off</code>",
         )
         return
 
@@ -495,18 +473,6 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 await db.update_alert(alert.id, min_price=price)
             else:
                 await db.update_alert(alert.id, max_price=price)
-        elif field == "radio":
-            try:
-                radius = int(value)
-            except ValueError as exc:
-                raise ValueError("el radio debe ser un número de km") from exc
-            if not 1 <= radius <= 500:
-                raise ValueError("el radio debe estar entre 1 y 500 km")
-            if alert.latitude is None or alert.longitude is None:
-                raise ValueError(
-                    "primero define una zona con /editar <id> zona <ciudad>"
-                )
-            await db.update_alert(alert.id, radius_km=radius)
         elif field == "intervalo":
             try:
                 interval = int(value)
@@ -530,27 +496,17 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             else:
                 raise ValueError("usa wallapop, vinted o ambas")
             await db.update_alert(alert.id, platforms=platforms)
-        elif field in {"estricto", "strict"}:
-            await db.update_alert(
-                alert.id, strict_keywords=parse_toggle(value)
-            )
         elif field in {"precios", "bajadas", "precio_bajadas"}:
             await db.update_alert(
                 alert.id, notify_price_changes=parse_toggle(value)
             )
-        elif field in {"zona", "ubicacion", "ubicación"}:
-            latitude, longitude, radius = await parse_location_input(
-                value, alert.radius_km or DEFAULT_RADIUS_KM
-            )
+        elif field in {"envio", "envío", "shipping"}:
             await db.update_alert(
-                alert.id,
-                latitude=latitude,
-                longitude=longitude,
-                radius_km=radius,
+                alert.id, wallapop_shipping=parse_toggle(value)
             )
         else:
             raise ValueError(f"campo desconocido: {field}")
-    except (ValueError, GeocodeError) as exc:
+    except ValueError as exc:
         await update.effective_message.reply_text(f"⚠️ {exc}")
         return
 
@@ -638,7 +594,7 @@ def _wizard(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
 async def start_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["wizard"] = {}
     await update.effective_message.reply_text(
-        "🆕 <b>Nueva búsqueda</b> (1/8)\n\n"
+        "🆕 <b>Nueva búsqueda</b> (1/7)\n\n"
         "¿Cómo la llamamos? Ej: <i>PS5 barata</i>\n\n"
         "<i>Escribe /cancelar para salir.</i>",
         parse_mode="HTML",
@@ -660,7 +616,7 @@ async def new_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         ]
     )
     await update.effective_message.reply_text(
-        "(2/8) ¿Dónde buscamos?", reply_markup=keyboard
+        "(2/7) ¿Dónde buscamos?", reply_markup=keyboard
     )
     return WIZ_PLATFORMS
 
@@ -684,7 +640,7 @@ async def new_platforms(
     label = " + ".join(PLATFORM_LABELS[p] for p in platforms)
     await query.edit_message_text(
         f"🏪 Plataformas: <b>{label}</b>\n\n"
-        "(3/8) ¿Qué palabras clave busco? Ej: <i>playstation 5</i>",
+        "(3/7) ¿Qué palabras clave busco? Ej: <i>playstation 5</i>",
         parse_mode="HTML",
         reply_markup=None,
     )
@@ -702,7 +658,7 @@ async def new_keywords(
         return WIZ_KEYWORDS
     _wizard(context)["keywords"] = keywords
     await update.effective_message.reply_text(
-        "(4/8) Precio: <code>mín-máx</code>.\n\n"
+        "(4/7) Precio: <code>mín-máx</code>.\n\n"
         "Ejemplos: <code>100-400</code>, <code>100-</code> (solo mínimo),"
         " <code>-400</code> (solo máximo), <code>-</code> (sin filtro).",
         parse_mode="HTML",
@@ -721,48 +677,8 @@ async def new_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     wizard["min_price"] = minimum
     wizard["max_price"] = maximum
 
-    if "wallapop" in wizard.get("platforms", []):
-        await update.effective_message.reply_text(
-            "(5/8) Zona para Wallapop:\n"
-            "· ciudad: <code>Madrid</code> o <code>Madrid 30</code>"
-            " (30 km de radio)\n"
-            "· coordenadas: <code>40.4168,-3.7038</code>\n"
-            "· <code>-</code> para toda España\n\n"
-            "<i>Vinted no permite filtrar por distancia; este paso solo"
-            " afecta a Wallapop.</i>",
-            parse_mode="HTML",
-        )
-        return WIZ_LOCATION
-
     await update.effective_message.reply_text(
-        "(5/8) La búsqueda es solo de Vinted, que no permite filtrar por"
-        " zona. Paso omitido.\n\n"
-        "(6/8) Palabras o frases que deben excluirse, separadas por comas."
-        " Escribe <code>-</code> si no quieres excluir nada.",
-        parse_mode="HTML",
-    )
-    return WIZ_EXCLUDE
-
-
-async def new_location(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> int:
-    text = update.effective_message.text or ""
-    try:
-        latitude, longitude, radius = await parse_location_input(text)
-    except (GeocodeError, ValueError) as exc:
-        await update.effective_message.reply_text(
-            f"⚠️ {html.escape(str(exc))}\nPrueba con una ciudad"
-            " (<code>Madrid</code>), coordenadas o <code>-</code>.",
-            parse_mode="HTML",
-        )
-        return WIZ_LOCATION
-    wizard = _wizard(context)
-    wizard["latitude"] = latitude
-    wizard["longitude"] = longitude
-    wizard["radius_km"] = radius
-    await update.effective_message.reply_text(
-        "(6/8) Palabras o frases que deben excluirse, separadas por comas."
+        "(5/7) Palabras o frases que deben excluirse, separadas por comas."
         " Ej: <code>roto, para piezas, bisagras</code>.\n"
         "Escribe <code>-</code> si no quieres excluir nada.",
         parse_mode="HTML",
@@ -778,7 +694,7 @@ async def new_exclude(
     wizard["exclude_words"] = "" if text == "-" else text
     settings = _settings(context)
     await update.effective_message.reply_text(
-        "(7/8) ¿Cada cuántos segundos reviso?"
+        "(6/7) ¿Cada cuántos segundos reviso?"
         f" Mínimo {settings.min_interval}, por defecto"
         f" {settings.default_interval}. Escribe <code>-</code> para el"
         " valor por defecto.",
@@ -827,7 +743,7 @@ async def new_interval(
         ]
     )
     await update.effective_message.reply_text(
-        "(8/8) ¿Quieres que avise también de los anuncios que ya existen?"
+        "(7/7) ¿Quieres que avise también de los anuncios que ya existen?"
         "\n\nLo normal es <b>No</b>: solo te llegarán los que se publiquen"
         " a partir de ahora.",
         parse_mode="HTML",
@@ -851,9 +767,6 @@ async def new_notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             keywords=wizard["keywords"],
             min_price=wizard.get("min_price"),
             max_price=wizard.get("max_price"),
-            latitude=wizard.get("latitude"),
-            longitude=wizard.get("longitude"),
-            radius_km=wizard.get("radius_km"),
             exclude_words=wizard.get("exclude_words", ""),
             interval_seconds=wizard["interval_seconds"],
             notify_existing=notify_existing,
@@ -883,10 +796,9 @@ async def new_notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             " primera pasada."
         )
         + (
-            f"\n\n🎯 Modo estricto activado: descarto anuncios cuyo título no"
-            f" contenga ninguna palabra clave. Desactívalo con"
-            f" /editar {alert.id} estricto off."
-            if alert.strict_keywords
+            f"\n\n📦 Solo avisaré anuncios de Wallapop con envío disponible."
+            f" Desactívalo con /editar {alert.id} envio off."
+            if "wallapop" in alert.platforms
             else ""
         )
         + (
@@ -1004,9 +916,6 @@ def _build_conversation() -> ConversationHandler:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, new_keywords)
             ],
             WIZ_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_price)],
-            WIZ_LOCATION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, new_location)
-            ],
             WIZ_EXCLUDE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, new_exclude)
             ],

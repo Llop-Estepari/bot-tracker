@@ -79,11 +79,6 @@ def split_words(raw: str) -> list[str]:
     ]
 
 
-def keyword_tokens(keywords: str) -> list[str]:
-    """Divide las palabras clave en tokens sin acentos ni mayúsculas."""
-    return [token for token in re.split(r"[\s,;]+", normalize(keywords)) if token]
-
-
 def matches(listing: Listing, alert: Alert) -> bool:
     """Comprueba precio y palabras excluidas (los keywords los filtra el servidor)."""
     if alert.min_price is not None or alert.max_price is not None:
@@ -93,14 +88,6 @@ def matches(listing: Listing, alert: Alert) -> bool:
             return False
         if alert.max_price is not None and listing.price > alert.max_price + 0.001:
             return False
-
-    if alert.strict_keywords and alert.keywords.strip():
-        tokens = keyword_tokens(alert.keywords)
-        meaningful = [token for token in tokens if len(token) >= 3] or tokens
-        if meaningful:
-            title = normalize(listing.title)
-            if not any(token in title for token in meaningful):
-                return False
 
     excluded = [normalize(word) for word in split_words(alert.exclude_words)]
     excluded = [word for word in excluded if word]

@@ -31,7 +31,7 @@ def test_estado_incluye_version_y_fecha():
 
     assert f"v{__version__}" in text
     assert __release_date__ in text
-    assert "1 búsquedas activas de 2" in text
+    assert "1 activas de 2" in text
 
 
 def test_estado_incluye_enfriamientos():

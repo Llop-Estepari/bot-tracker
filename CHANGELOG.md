@@ -4,6 +4,12 @@ Todas las versiones notables de este proyecto se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el versionado [SemVer](https://semver.org/lang/es/).
 
+## [1.2.3] - 2026-11-13
+
+### Cambios
+
+- Mejora la actualización en Termux y muestra los cambios locales
+
 ## [1.2.2] - 2026-11-13
 
 ### Cambios

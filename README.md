@@ -317,11 +317,51 @@ El instalador es idempotente y nunca borra `.env`, `tracker.db` ni `.venv`:
 bash <(curl -fsSL https://raw.githubusercontent.com/Llop-Estepari/bot-tracker/main/install.sh)
 ```
 
-### Desinstalar
+### Desactivar el bot permanentemente
+
+#### Nivel 1 · Pararlo sin desinstalar (reversible)
 
 ```bash
-bash ~/bot-tracker/deploy/phone-uninstall.sh          # conserva los datos
-bash ~/bot-tracker/deploy/phone-uninstall.sh --purge  # borra también el proyecto
+sv down bot
+touch $PREFIX/var/service/bot/down
+tmux kill-session -t bot 2>/dev/null || true
+pkill -f '[.]venv/bin/python main.py' 2>/dev/null || true
+termux-wake-unlock
+```
+
+- `sv down` lo para ahora.
+- El fichero `down` impide que runit lo arranque al reiniciar.
+- `.env` y `tracker.db` se conservan.
+
+Para volver a activarlo:
+
+```bash
+rm -f $PREFIX/var/service/bot/down
+sv up bot
+```
+
+#### Nivel 2 · Desinstalar del móvil conservando los datos
+
+```bash
+bash ~/bot-tracker/deploy/phone-uninstall.sh
+```
+
+Elimina el servicio runit, el arranque con Termux:Boot y los atajos del widget,
+pero **conserva** `~/bot-tracker` con `.env` y `tracker.db`.
+
+Si además quieres borrar el proyecto (antes guarda un backup de `.env` y
+`tracker.db` en `~/bot-tracker-backups`):
+
+```bash
+bash ~/bot-tracker/deploy/phone-uninstall.sh --purge
+```
+
+Comprueba que no queda nada activo:
+
+```bash
+sv status bot
+pgrep -af '[.]venv/bin/python main.py'
+ls ~/.termux/boot/start-bot.sh 2>/dev/null || echo "sin arranque automático"
 ```
 
 ---

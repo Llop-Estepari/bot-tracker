@@ -4,6 +4,12 @@ Todas las versiones notables de este proyecto se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el versionado [SemVer](https://semver.org/lang/es/).
 
+## [2.1.2] - 2026-11-14
+
+### Cambios
+
+- Documenta cómo desactivar el bot (niveles 1 y 2)
+
 ## [2.1.1] - 2026-11-14
 
 ### Cambios

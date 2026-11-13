@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     vinted_brand_ids TEXT NOT NULL DEFAULT '',
     vinted_condition_ids TEXT NOT NULL DEFAULT '',
     exclude_words TEXT NOT NULL DEFAULT '',
+    strict_keywords INTEGER NOT NULL DEFAULT 1,
     interval_seconds INTEGER NOT NULL,
     notify_existing INTEGER NOT NULL DEFAULT 0,
     notify_price_changes INTEGER NOT NULL DEFAULT 1,
@@ -67,6 +68,7 @@ UPDATABLE_FIELDS = {
     "vinted_brand_ids",
     "vinted_condition_ids",
     "exclude_words",
+    "strict_keywords",
     "interval_seconds",
     "notify_existing",
     "notify_price_changes",
@@ -112,6 +114,7 @@ class Alert:
     vinted_brand_ids: list[int]
     vinted_condition_ids: list[int]
     exclude_words: str
+    strict_keywords: bool
     interval_seconds: int
     notify_existing: bool
     notify_price_changes: bool
@@ -135,6 +138,7 @@ class NewAlert:
     vinted_brand_ids: list[int] = field(default_factory=list)
     vinted_condition_ids: list[int] = field(default_factory=list)
     exclude_words: str = ""
+    strict_keywords: bool = True
     interval_seconds: int = 90
     notify_existing: bool = False
     notify_price_changes: bool = True
@@ -155,6 +159,7 @@ def _row_to_alert(row: aiosqlite.Row) -> Alert:
         vinted_brand_ids=_csv_ints(row["vinted_brand_ids"]),
         vinted_condition_ids=_csv_ints(row["vinted_condition_ids"]),
         exclude_words=row["exclude_words"],
+        strict_keywords=bool(row["strict_keywords"]),
         interval_seconds=row["interval_seconds"],
         notify_existing=bool(row["notify_existing"]),
         notify_price_changes=bool(row["notify_price_changes"]),
@@ -206,8 +211,13 @@ class Database:
                 "ALTER TABLE alerts ADD COLUMN notify_price_changes"
                 " INTEGER NOT NULL DEFAULT 1"
             )
+        if "strict_keywords" not in columns:
+            await self.conn.execute(
+                "ALTER TABLE alerts ADD COLUMN strict_keywords"
+                " INTEGER NOT NULL DEFAULT 1"
+            )
 
-        for obsolete in ("latitude", "longitude", "radius_km", "strict_keywords"):
+        for obsolete in ("latitude", "longitude", "radius_km"):
             if obsolete in columns:
                 try:
                     await self.conn.execute(
@@ -239,9 +249,9 @@ class Database:
                 chat_id, name, platforms, keywords, min_price, max_price,
                 wallapop_category_id, wallapop_shipping,
                 vinted_catalog_ids, vinted_brand_ids, vinted_condition_ids,
-                exclude_words, interval_seconds,
+                exclude_words, strict_keywords, interval_seconds,
                 notify_existing, notify_price_changes, seeded, active, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
             """,
             (
                 new.chat_id,
@@ -256,6 +266,7 @@ class Database:
                 ",".join(str(v) for v in new.vinted_brand_ids),
                 ",".join(str(v) for v in new.vinted_condition_ids),
                 new.exclude_words,
+                int(new.strict_keywords),
                 new.interval_seconds,
                 int(new.notify_existing),
                 int(new.notify_price_changes),

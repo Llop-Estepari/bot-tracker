@@ -5,7 +5,7 @@ Telegram en cuanto aparece un anuncio nuevo que encaja con tus filtros.
 
 - Filtros por palabras clave, precio, envío (Wallapop), marcas, categorías y
   estado (Vinted).
-- Palabras excluidas para eliminar resultados irrelevantes.
+- Palabras excluidas y **modo estricto** para eliminar resultados irrelevantes.
 - Cada búsqueda tiene su propio intervalo (60 s – 1 h, por defecto 90 s).
 - Deduplicación en SQLite: nunca recibes dos veces el mismo anuncio.
 - Aviso de **bajada de precio** cuando un anuncio ya visto se abarata
@@ -116,8 +116,15 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 /editar 3 plataformas ambas
 /editar 3 intervalo 120
 /editar 3 envio off
+/editar 3 estricto off
 /editar 3 precios off
 ```
+
+El **modo estricto** está activo por defecto: descarta anuncios cuyo título no
+contenga al menos una palabra clave (con al menos 3 letras). Desactívalo con
+`/editar <id> estricto off` si crees que se te escapan anuncios por usar
+siglas (por ejemplo, títulos que solo dicen «PS5» para una búsqueda
+«playstation 5»).
 
 El **filtro de envío** de Wallapop está activo por defecto: solo se avisan
 anuncios con envío disponible. Desactívalo con `/editar <id> envio off`.
@@ -163,7 +170,8 @@ Usa `-` como valor para borrar un filtro.
   muy antiguo puede salir de esa ventana.
 - Filtros server-side: palabras, precio, envío (Wallapop), categoría, marca y
   estado.
-- Filtros client-side: palabras excluidas y comprobación defensiva de precio.
+- Filtros client-side: modo estricto, palabras excluidas y comprobación
+  defensiva de precio.
 - Ante `429` la plataforma se enfría 3 minutos; ante `403` (bloqueo), 15
   minutos. El resto de plataformas siguen funcionando.
 - Wallapop se consulta con `httpx` y las cabeceras de su web; si responde 403, la plataforma se enfría.
@@ -385,7 +393,7 @@ Wallapop no permite filtrar por país: usa su feed por defecto.
 main.py              Arranque: Telegram + scheduler
 config.py            Configuración desde .env
 db.py                SQLite: alertas y anuncios vistos
-filters.py           Filtros de cliente (exclusiones y precio)
+filters.py           Filtros de cliente (modo estricto, exclusiones y precio)
 notifier.py          Mensajes de Telegram
 scheduler.py         Bucle de comprobación y deduplicación
 sources/wallapop.py  Cliente de Wallapop

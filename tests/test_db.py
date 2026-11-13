@@ -78,6 +78,7 @@ async def test_crear_y_leer_alerta(database):
     assert alert.notify_existing is False
     assert alert.notify_price_changes is True
     assert alert.wallapop_shipping is True
+    assert alert.strict_keywords is True
 
     fetched = await database.get_alert(alert.id)
     assert fetched is not None
@@ -94,6 +95,7 @@ async def test_actualizar_listas_y_booleanos(database):
         vinted_brand_ids=[53, 417],
         notify_price_changes=False,
         wallapop_shipping=False,
+        strict_keywords=False,
         active=False,
     )
 
@@ -102,6 +104,7 @@ async def test_actualizar_listas_y_booleanos(database):
     assert updated.vinted_brand_ids == [53, 417]
     assert updated.notify_price_changes is False
     assert updated.wallapop_shipping is False
+    assert updated.strict_keywords is False
     assert updated.active is False
 
 
@@ -180,7 +183,29 @@ async def test_migracion_anade_columnas_de_precio(tmp_path):
         assert "latitude" not in alert_columns
         assert "longitude" not in alert_columns
         assert "radius_km" not in alert_columns
-        assert "strict_keywords" not in alert_columns
+        assert "strict_keywords" in alert_columns
         assert "last_price" in seen_columns
+    finally:
+        await database.close()
+
+
+async def test_migracion_readd_strict_keywords(tmp_path):
+    path = tmp_path / "v120.db"
+    database = Database(path)
+    await database.connect()
+    alert = await database.create_alert(make_new_alert())
+    await database.close()
+
+    connection = sqlite3.connect(path)
+    connection.execute("ALTER TABLE alerts DROP COLUMN strict_keywords")
+    connection.commit()
+    connection.close()
+
+    database = Database(path)
+    await database.connect()
+    try:
+        fetched = await database.get_alert(alert.id)
+        assert fetched is not None
+        assert fetched.strict_keywords is True
     finally:
         await database.close()

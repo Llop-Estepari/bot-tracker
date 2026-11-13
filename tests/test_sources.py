@@ -34,6 +34,7 @@ def make_alert(**overrides) -> Alert:
         "vinted_brand_ids": [],
         "vinted_condition_ids": [],
         "exclude_words": "",
+        "strict_keywords": True,
         "interval_seconds": 90,
         "notify_existing": False,
         "notify_price_changes": True,

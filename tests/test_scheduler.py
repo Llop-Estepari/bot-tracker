@@ -96,6 +96,7 @@ async def create_alert(database: Database, **overrides) -> object:
         "name": "prueba",
         "platforms": ["wallapop"],
         "keywords": "k",
+        "strict_keywords": False,
     }
     values.update(overrides)
     return await database.create_alert(NewAlert(**values))

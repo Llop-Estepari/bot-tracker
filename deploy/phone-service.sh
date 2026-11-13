@@ -53,7 +53,7 @@ wait_for_service() {
 
 install_service() {
     [ -x "$DEST/.venv/bin/python" ] \
-        || die "falta $DEST/.venv. Ejecuta primero phone-install.sh"
+        || die "falta $DEST/.venv. Ejecuta primero install.sh"
 
     mkdir -p "$SERVICE_DIR/log" "$LOG_DIR"
 

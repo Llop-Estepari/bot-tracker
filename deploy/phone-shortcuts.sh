@@ -36,7 +36,7 @@ write_shortcut() {
 }
 
 write_shortcut "Instalar bot" \
-    "exec bash \"$DEST/deploy/phone-install.sh\""
+    "exec bash \"$DEST/install.sh\""
 
 write_shortcut "Actualizar bot" \
     "exec bash \"$DEST/update.sh\""

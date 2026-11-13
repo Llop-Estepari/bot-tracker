@@ -87,7 +87,9 @@ section "Batería y segundo plano"
 SDK="$(getprop ro.build.version.sdk 2>/dev/null || echo 0)"
 echo "   Android SDK: $SDK"
 if [ "${SDK:-0}" -ge 31 ]; then
-    warn "Android 12+: desactiva el phantom process killer por ADB (una vez)"
+    warn "Android 12+: el sistema puede matar procesos en segundo plano"
+    echo "   Lo importante es la batería sin restricciones (abajo)."
+    echo "   Opcional con un PC por USB (una vez):"
     echo "   adb shell device_config put activity_manager max_phantom_processes 2147483647"
     echo "   adb shell settings put global settings_enable_monitor_phantom_procs false"
 fi

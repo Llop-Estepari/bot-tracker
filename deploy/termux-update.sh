@@ -73,7 +73,7 @@ abort() {
 }
 
 [ -d .git ] || abort "esto no parece un clon de Git. Revisa el README (sección Termux)."
-[ -x .venv/bin/python ] || abort "falta .venv. Ejecuta primero deploy/termux-install.sh."
+[ -x .venv/bin/python ] || abort "falta .venv. Ejecuta primero bash ~/bot-tracker/install.sh."
 
 if ! command -v pkg >/dev/null 2>&1; then
     abort "este script debe ejecutarse dentro de Termux."

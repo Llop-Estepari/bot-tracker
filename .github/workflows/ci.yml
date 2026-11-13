@@ -19,7 +19,7 @@ jobs:
 
       - name: Comprobar sintaxis de los scripts
         run: |
-          for script in deploy/*.sh update.sh; do
+          for script in install.sh update.sh deploy/*.sh; do
             echo "bash -n $script"
             bash -n "$script"
           done

@@ -12,3 +12,6 @@ __pycache__/
 .coverage
 dist/
 build/
+logs/
+update-status
+.update-lock

@@ -85,10 +85,18 @@ BEFORE="$(git rev-parse HEAD)"
 STOPPED=0
 BOT_PROCESS_PATTERN='(^|/)[.]venv/bin/python main[.]py$'
 
+ensure_logs() {
+    mkdir -p "$DEST/logs"
+    if [ ! -f "$DEST/logs/config" ]; then
+        printf 's5000000\nn3\n' > "$DEST/logs/config"
+    fi
+}
+
 stop_bot() {
     # Con runit hay que bajar el servicio; si no, se relanza solo.
     if [ "$HAS_SERVICE" -eq 1 ]; then
         sv down "$SESSION" 2>/dev/null || true
+        sv down "$SESSION/log" 2>/dev/null || true
         sleep 1
     fi
     tmux kill-session -t "$SESSION" 2>/dev/null || true
@@ -102,12 +110,14 @@ stop_bot() {
 }
 
 start_bot() {
+    ensure_logs
     if [ "$HAS_SERVICE" -eq 1 ]; then
         if ! pgrep -f "runsvdir -P $PREFIX/var/service" >/dev/null 2>&1; then
             nohup "$PREFIX/bin/runsvdir" -P "$PREFIX/var/service" \
                 >/dev/null 2>&1 &
             sleep 1
         fi
+        sv up "$SESSION/log" 2>/dev/null || true
         sv up "$SESSION" 2>/dev/null || true
         return 0
     fi
@@ -235,6 +245,11 @@ if [ "$HAS_SERVICE" -eq 1 ]; then
         echo "el servicio runit no está en ejecución" >&2
         false
     }
+    if [ -d "$SERVICE_DIR/log" ] \
+        && ! sv status "$SESSION/log" 2>/dev/null | grep -q '^run:'; then
+        echo "el servicio de logs ($SESSION/log) no está en ejecución" >&2
+        false
+    fi
     if [ -n "$NEW_VERSION" ]; then
         for _ in $(seq 1 15); do
             if tail -n 500 "$LOG_FILE" 2>/dev/null \
@@ -243,6 +258,10 @@ if [ "$HAS_SERVICE" -eq 1 ]; then
             fi
             sleep 1
         done
+        if [ ! -f "$LOG_FILE" ]; then
+            echo "no existe $LOG_FILE; revisa el servicio $SESSION/log" >&2
+            false
+        fi
         if ! tail -n 500 "$LOG_FILE" 2>/dev/null \
             | grep -q "Arrancando el bot v${NEW_VERSION}"; then
             echo "el bot no arrancó con la versión ${NEW_VERSION}" >&2

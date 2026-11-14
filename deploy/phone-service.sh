@@ -51,11 +51,19 @@ wait_for_service() {
     return 1
 }
 
+ensure_logs() {
+    mkdir -p "$LOG_DIR"
+    if [ ! -f "$LOG_DIR/config" ]; then
+        printf 's5000000\nn3\n' > "$LOG_DIR/config"
+    fi
+}
+
 install_service() {
     [ -x "$DEST/.venv/bin/python" ] \
         || die "falta $DEST/.venv. Ejecuta primero install.sh"
 
-    mkdir -p "$SERVICE_DIR/log" "$LOG_DIR"
+    ensure_logs
+    mkdir -p "$SERVICE_DIR/log"
 
     cat > "$SERVICE_DIR/run" <<EOF
 #!/data/data/com.termux/files/usr/bin/sh
@@ -77,6 +85,7 @@ EOF
     write_boot_hook
     ensure_runsvdir
     wait_for_service || true
+    sv up "$SERVICE_NAME/log" 2>/dev/null || true
     sv up "$SERVICE_NAME" 2>/dev/null || true
     echo "✅ Servicio '$SERVICE_NAME' instalado en $SERVICE_DIR"
 }
@@ -99,6 +108,7 @@ if ! pgrep -f "runsvdir -P \$PREFIX/var/service" >/dev/null 2>&1; then
     sleep 2
 fi
 
+"\$PREFIX/bin/sv" up $SERVICE_NAME/log 2>/dev/null || true
 "\$PREFIX/bin/sv" up $SERVICE_NAME 2>/dev/null || true
 sleep 3
 
@@ -117,6 +127,12 @@ EOF
 service_status() {
     if sv status "$SERVICE_NAME" 2>/dev/null | grep -q '^run:'; then
         echo "✅ Servicio '$SERVICE_NAME' en ejecución"
+        if sv status "$SERVICE_NAME/log" 2>/dev/null | grep -q '^run:'; then
+            echo "✅ Servicio de logs en ejecución"
+        else
+            echo "⚠️ Servicio de logs detenido"
+            return 1
+        fi
         return 0
     fi
     echo "⚠️ Servicio '$SERVICE_NAME' detenido"
@@ -131,18 +147,23 @@ case "$ACTION" in
         ;;
     start)
         ensure_termux
+        ensure_logs
         write_boot_hook >/dev/null
         ensure_runsvdir
         wait_for_service || true
+        sv up "$SERVICE_NAME/log" 2>/dev/null || true
         sv up "$SERVICE_NAME"
         ;;
     stop)
         ensure_termux
         sv down "$SERVICE_NAME" 2>/dev/null || true
+        sv down "$SERVICE_NAME/log" 2>/dev/null || true
         echo "Servicio detenido."
         ;;
     restart)
         ensure_termux
+        ensure_logs
+        sv restart "$SERVICE_NAME/log" 2>/dev/null || true
         sv restart "$SERVICE_NAME" 2>/dev/null || sv up "$SERVICE_NAME"
         ;;
     status)
@@ -152,6 +173,7 @@ case "$ACTION" in
     remove)
         ensure_termux
         sv down "$SERVICE_NAME" 2>/dev/null || true
+        sv down "$SERVICE_NAME/log" 2>/dev/null || true
         rm -rf "$SERVICE_DIR"
         rm -f "$BOOT_HOOK"
         echo "🗑 Servicio y arranque automático eliminados (datos conservados)."

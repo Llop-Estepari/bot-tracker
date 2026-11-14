@@ -53,6 +53,11 @@ if ! command -v sv >/dev/null 2>&1; then
 elif sv status bot 2>/dev/null | grep -q '^run:'; then
     ok "servicio 'bot' en ejecución"
     sv status bot 2>/dev/null | sed 's/^/   /'
+    if sv status bot/log 2>/dev/null | grep -q '^run:'; then
+        ok "servicio de logs en ejecución"
+    else
+        bad "servicio de logs detenido: sv restart bot/log"
+    fi
 else
     bad "servicio 'bot' detenido"
     sv status bot 2>/dev/null | sed 's/^/   /'
@@ -95,6 +100,9 @@ if [ -f "$DEST/logs/current" ]; then
     ok "log de runit: $DEST/logs/current"
     echo "   tamaño: $(du -h "$DEST/logs/current" | cut -f1)"
     tail -n 5 "$DEST/logs/current" | sed 's/^/   /'
+elif sv status bot/log 2>/dev/null | grep -q '^run:'; then
+    bad "bot/log está activo pero falta logs/current"
+    echo "   reinicia el log: sv restart bot/log"
 elif [ -f "$DEST/bot.log" ]; then
     ok "log clásico: $DEST/bot.log"
     tail -n 5 "$DEST/bot.log" | sed 's/^/   /'

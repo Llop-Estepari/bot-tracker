@@ -375,7 +375,13 @@ tail -f ~/bot-tracker/logs/current     # en vivo
 sv status bot
 ```
 
-Los logs rotan solos: 5 MB por fichero y 3 ficheros.
+Los logs rotan solos: 5 MB por fichero y 3 ficheros. El directorio `logs/`
+está ignorado por Git, así que las actualizaciones no lo borran. Si alguna vez
+falta `logs/current`, reinicia el servicio de log:
+
+```bash
+sv restart bot/log
+```
 
 ### Copias de seguridad y cambio de móvil
 
@@ -656,6 +662,20 @@ Revisa `~/bot-tracker/update.log`. El script descarta los cambios locales con
 backup y hace rollback si falla; con runit baja el servicio antes de actualizar,
 así que no hay que parar nada a mano. El comando `/actualizar` escribe además su
 resultado en `~/bot-tracker/update-status`.
+
+**Actualización falla en 5/5 y no existe `logs/current`**
+Ocurría en versiones anteriores a 0.1.435470: `logs/` no estaba ignorado y
+`git clean` lo borraba. Si actualizas desde una versión antigua, ejecuta una
+vez:
+
+```bash
+cd ~/bot-tracker
+printf 'logs/\nupdate-status\n.update-lock\n' >> .git/info/exclude
+mkdir -p logs
+printf 's5000000\nn3\n' > logs/config
+sv restart bot/log
+bash update.sh
+```
 
 **`/actualizar` dice que no hay permiso**
 Tu chat no está en `ADMIN_CHAT_IDS`. Añádelo:

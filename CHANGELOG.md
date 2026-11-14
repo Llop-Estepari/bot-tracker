@@ -5,6 +5,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 La versión es `0.1.<build>`: el último número es un contador que aumenta en
 cada publicación.
 
+## [0.1.435470] - 2026-11-14
+
+### Cambios
+
+- Protege logs de git clean y reinicia el servicio de log
+
 ## [0.1.435469] - 2026-11-14
 
 ### Cambios

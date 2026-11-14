@@ -269,11 +269,23 @@ def format_alert(alert: Alert) -> str:
     lines.append(
         f"⏱ <i>cada {alert.interval_seconds}s</i> · {status}{strict}"
     )
-    lines.append(
-        "👁 <i>última comprobación: "
-        + html.escape(format_local_time(alert.last_checked_at))
-        + "</i>"
-    )
+    if alert.last_checked_at:
+        checked_text = format_local_time(alert.last_checked_at)
+        if alert.last_check_ok is False:
+            reason = html.escape(
+                (alert.last_check_error or "error").strip()
+            )
+            lines.append(f"👁 <i>último intento: {checked_text}</i>")
+            lines.append(f"⚠️ <i>falló: {reason}</i>")
+        elif alert.last_check_ok is True:
+            lines.append(
+                f"👁 <i>última comprobación correcta: {checked_text}</i>"
+            )
+        else:
+            lines.append(f"👁 <i>último intento: {checked_text}</i>")
+    else:
+        lines.append("👁 <i>sin comprobaciones todavía</i>")
+
     if alert.active and alert.last_checked_at:
         try:
             checked = datetime.fromisoformat(alert.last_checked_at)
@@ -285,7 +297,7 @@ def format_alert(alert: Alert) -> str:
             age = (datetime.now(UTC) - checked).total_seconds()
             if age > alert.interval_seconds * 3:
                 lines.append(
-                    f"⚠️ <i>sin comprobar desde hace {format_age(age)}</i>"
+                    f"⚠️ <i>sin intentos desde hace {format_age(age)}</i>"
                 )
     return "\n".join(lines)
 

@@ -11,7 +11,7 @@ import scheduler as scheduler_module
 from config import Settings
 from db import Database, NewAlert
 from scheduler import Tracker
-from sources.base import Listing
+from sources.base import Listing, SourceError
 
 
 def make_settings(**overrides) -> Settings:
@@ -380,3 +380,26 @@ def test_status_incluye_el_ultimo_ciclo():
     assert status["last_cycle_seconds_ago"] >= 4
     assert status["cycle_alerts"] == 3
     assert status["cycle_count"] == 7
+
+
+async def test_error_de_red_queda_en_la_alerta(database):
+    class FailingSource(FakeSource):
+        async def search(self, alert):
+            raise SourceError("sin red")
+
+    alert = await create_alert(database)
+    notifier = FakeNotifier()
+    tracker = Tracker(
+        make_settings(),
+        database,
+        {"wallapop": FailingSource([])},
+        notifier,
+    )
+
+    await tracker.check_alert(alert)
+    stored = await database.get_alert(alert.id)
+
+    assert stored is not None
+    assert stored.last_checked_at is not None
+    assert stored.last_check_ok is False
+    assert "sin red" in (stored.last_check_error or "")

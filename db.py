@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS alerts (
     seeded INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
-    last_checked_at TEXT
+    last_checked_at TEXT,
+    last_check_ok INTEGER,
+    last_check_error TEXT
 );
 
 CREATE TABLE IF NOT EXISTS seen_items (
@@ -134,6 +136,8 @@ class Alert:
     active: bool
     created_at: str
     last_checked_at: str | None
+    last_check_ok: bool | None = None
+    last_check_error: str | None = None
     radius_km: int | None = None
     # Origen del chat, resuelto al leer la alerta (no es una columna).
     origin_latitude: float | None = None
@@ -190,6 +194,12 @@ def _row_to_alert(row: aiosqlite.Row) -> Alert:
         active=bool(row["active"]),
         created_at=row["created_at"],
         last_checked_at=row["last_checked_at"],
+        last_check_ok=(
+            None
+            if _optional(row, "last_check_ok") is None
+            else bool(_optional(row, "last_check_ok"))
+        ),
+        last_check_error=_optional(row, "last_check_error"),
         radius_km=_optional(row, "radius_km"),
         origin_latitude=_optional(row, "origin_latitude"),
         origin_longitude=_optional(row, "origin_longitude"),
@@ -246,6 +256,14 @@ class Database:
             await self.conn.execute(
                 "ALTER TABLE alerts ADD COLUMN strict_keywords"
                 " INTEGER NOT NULL DEFAULT 1"
+            )
+        if "last_check_ok" not in columns:
+            await self.conn.execute(
+                "ALTER TABLE alerts ADD COLUMN last_check_ok INTEGER"
+            )
+        if "last_check_error" not in columns:
+            await self.conn.execute(
+                "ALTER TABLE alerts ADD COLUMN last_check_error TEXT"
             )
 
         dropped_coordinates = False
@@ -384,10 +402,21 @@ class Database:
         await self.conn.commit()
         return cursor.rowcount > 0
 
-    async def mark_checked(self, alert_id: int) -> None:
+    async def mark_checked(
+        self,
+        alert_id: int,
+        ok: bool | None = None,
+        error: str | None = None,
+    ) -> None:
         await self.conn.execute(
-            "UPDATE alerts SET last_checked_at = ? WHERE id = ?",
-            (utcnow_iso(), alert_id),
+            "UPDATE alerts SET last_checked_at = ?, last_check_ok = ?,"
+            " last_check_error = ? WHERE id = ?",
+            (
+                utcnow_iso(),
+                None if ok is None else int(ok),
+                (error or "")[:300] or None,
+                alert_id,
+            ),
         )
         await self.conn.commit()
 

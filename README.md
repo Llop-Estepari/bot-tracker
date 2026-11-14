@@ -501,8 +501,10 @@ ls ~/.termux/boot/start-bot.sh 2>/dev/null || echo "sin arranque automático"
   renueva automáticamente si caducan.
 - En el móvil, **runit** supervisa el proceso y **Termux:Boot** lo arranca al
   encender. La base de datos y el token viven solo en `~/bot-tracker`.
-- Las horas de `última comprobación` se muestran en la **hora local** del móvil,
-  aunque internamente se guarden en UTC.
+- Las horas de `último intento` / `comprobación correcta` se muestran en la
+  **hora local** del móvil, aunque internamente se guarden en UTC.
+- Si el último intento falló, `/lista` lo indica (`⚠️ falló: sin red`,
+  `timeout`, `bloqueado`…) en lugar de mostrar una hora que parece congelada.
 - La comprobación diaria de versión corre en una tarea aparte: si la red falla,
   no bloquea las búsquedas.
 - `/estado` muestra un latido del scheduler (`Último ciclo: hace Xs`) para
@@ -686,8 +688,9 @@ bloqueado: revisa `tail -f ~/bot-tracker/logs/current`. Lanza `/probar <id>`
 para consultar una búsqueda ahora mismo.
 
 **`/lista` avisa de que una búsqueda lleva mucho sin comprobar**
-Aparece cuando pasan más de 3 intervalos. Suele coincidir con falta de red o
-con el móvil suspendido; revisa el latido de `/estado` y los logs.
+Aparece cuando pasan más de 3 intervalos desde el último **intento**. Si además
+pone `⚠️ falló: …`, el scheduler está vivo pero las plataformas o la red
+fallan; revisa el mensaje y el latido de `/estado`.
 
 **La actualización no se aplica**
 Revisa `~/bot-tracker/update.log`. El script descarta los cambios locales con

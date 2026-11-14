@@ -105,9 +105,15 @@ class Tracker:
                             alert.id,
                             CHECK_TIMEOUT_SECONDS,
                         )
+                        await self._mark_failed_check(
+                            alert.id, f"timeout {CHECK_TIMEOUT_SECONDS}s"
+                        )
                     except Exception:  # pragma: no cover - protección
                         logger.exception(
                             "Error comprobando la alerta #%s", alert.id
+                        )
+                        await self._mark_failed_check(
+                            alert.id, "error interno"
                         )
                     else:
                         elapsed = time.monotonic() - started
@@ -136,6 +142,14 @@ class Tracker:
             except asyncio.CancelledError:
                 pass
         logger.info("Scheduler detenido")
+
+    async def _mark_failed_check(self, alert_id: int, error: str) -> None:
+        try:
+            await self._db.mark_checked(alert_id, ok=False, error=error)
+        except Exception:  # pragma: no cover - la BD no debe cortar el bucle
+            logger.exception(
+                "No se pudo guardar el estado de la alerta #%s", alert_id
+            )
 
     async def _version_loop(self) -> None:
         """Comprueba versiones sin bloquear el bucle de alertas."""
@@ -251,11 +265,13 @@ class Tracker:
         """Comprueba una alerta y devuelve cuántos avisos se enviaron."""
         first_pass = not alert.seeded
         seeded_any = False
+        errors: list[str] = []
 
         sent = 0
         for platform in alert.platforms:
             source = self._sources.get(platform)
             if source is None:
+                errors.append(f"{platform}: fuente desconocida")
                 logger.warning(
                     "Fuente desconocida %r en la alerta #%s", platform, alert.id
                 )
@@ -263,6 +279,7 @@ class Tracker:
 
             remaining = self._cooldown_remaining(platform)
             if remaining > 0:
+                errors.append(f"{platform}: enfriando ({int(remaining)}s)")
                 logger.info(
                     "Alerta #%s: salto %s por enfriamiento (%ss)",
                     alert.id,
@@ -274,6 +291,7 @@ class Tracker:
             try:
                 listings = await source.search(alert)
             except RateLimitError as exc:
+                errors.append(f"{platform}: límite de peticiones")
                 self._cooldown_until[platform] = (
                     time.monotonic() + RATE_LIMIT_COOLDOWN
                 )
@@ -286,6 +304,7 @@ class Tracker:
                 )
                 continue
             except BlockedError as exc:
+                errors.append(f"{platform}: bloqueado")
                 self._cooldown_until[platform] = (
                     time.monotonic() + BLOCKED_COOLDOWN
                 )
@@ -298,6 +317,7 @@ class Tracker:
                 )
                 continue
             except SourceError as exc:
+                errors.append(f"{platform}: {exc}")
                 logger.warning("Alerta #%s (%s): %s", alert.id, platform, exc)
                 continue
 
@@ -435,7 +455,11 @@ class Tracker:
 
         if first_pass and seeded_any:
             await self._db.update_alert(alert.id, seeded=True)
-        await self._db.mark_checked(alert.id)
+        await self._db.mark_checked(
+            alert.id,
+            ok=not errors,
+            error="; ".join(errors) if errors else None,
+        )
         return sent
 
     async def preview(

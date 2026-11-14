@@ -183,6 +183,8 @@ async def test_migracion_anade_columnas_de_precio(tmp_path):
         assert "longitude" not in alert_columns
         assert "radius_km" in alert_columns
         assert "strict_keywords" in alert_columns
+        assert "last_check_ok" in alert_columns
+        assert "last_check_error" in alert_columns
         assert "last_price" in seen_columns
     finally:
         await database.close()
@@ -260,3 +262,22 @@ async def test_estado_interno_clave_valor(database):
 
     await database.set_state("last_version_check", "2026-11-15")
     assert await database.get_state("last_version_check") == "2026-11-15"
+
+
+async def test_mark_checked_guarda_el_resultado(database):
+    alert = await database.create_alert(make_new_alert())
+
+    await database.mark_checked(alert.id, ok=False, error="timeout 180s")
+    fetched = await database.get_alert(alert.id)
+
+    assert fetched is not None
+    assert fetched.last_checked_at is not None
+    assert fetched.last_check_ok is False
+    assert fetched.last_check_error == "timeout 180s"
+
+    await database.mark_checked(alert.id, ok=True)
+    fetched = await database.get_alert(alert.id)
+
+    assert fetched is not None
+    assert fetched.last_check_ok is True
+    assert fetched.last_check_error is None

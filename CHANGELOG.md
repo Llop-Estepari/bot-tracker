@@ -1,8 +1,9 @@
 # Changelog
 
 Todas las versiones notables de este proyecto se documentan aquí.
-El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
-y el versionado [SemVer](https://semver.org/lang/es/).
+El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
+La versión es `0.1.<build>`: el último número es un contador que aumenta en
+cada publicación.
 
 ## [0.1.435464] - 2026-11-14
 

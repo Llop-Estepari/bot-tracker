@@ -44,7 +44,6 @@ def make_alert(**overrides) -> Alert:
         "strict_keywords": True,
         "interval_seconds": 90,
         "notify_existing": False,
-        "notify_price_changes": True,
         "seeded": False,
         "active": True,
         "created_at": "2026-01-01T00:00:00+00:00",

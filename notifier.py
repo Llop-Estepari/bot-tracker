@@ -79,16 +79,19 @@ def build_caption(listing: Listing, alert: Alert | None = None) -> str:
 def build_price_change_caption(
     listing: Listing, old_price: float, alert: Alert | None = None
 ) -> str:
+    dropped = listing.price is not None and listing.price < old_price
     price_line = (
         f"💶 <s>{format_price(old_price)}</s> →"
         f" <b>{format_price(listing.price)}</b>"
     )
     if listing.price is not None and old_price > 0:
-        percent = (old_price - listing.price) / old_price * 100
-        if percent > 0:
-            price_line += f" · <i>-{percent:.0f}%</i>"
+        percent = (listing.price - old_price) / old_price * 100
+        if abs(percent) >= 0.5:
+            sign = "+" if percent > 0 else "-"
+            price_line += f" · <i>{sign}{abs(percent):.0f}%</i>"
+    title = "📉 <b>¡Baja de precio!</b>" if dropped else "📈 <b>¡Sube el precio!</b>"
     lines = [
-        "📉 <b>¡Baja de precio!</b>",
+        title,
         *_listing_lines(listing, price_line, alert),
     ]
     return "\n".join(lines)

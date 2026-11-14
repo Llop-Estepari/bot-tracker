@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS alerts (
     strict_keywords INTEGER NOT NULL DEFAULT 1,
     interval_seconds INTEGER NOT NULL,
     notify_existing INTEGER NOT NULL DEFAULT 0,
-    notify_price_changes INTEGER NOT NULL DEFAULT 1,
     seeded INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
@@ -86,7 +85,6 @@ UPDATABLE_FIELDS = {
     "strict_keywords",
     "interval_seconds",
     "notify_existing",
-    "notify_price_changes",
     "seeded",
     "active",
     "last_checked_at",
@@ -132,7 +130,6 @@ class Alert:
     strict_keywords: bool
     interval_seconds: int
     notify_existing: bool
-    notify_price_changes: bool
     seeded: bool
     active: bool
     created_at: str
@@ -161,7 +158,6 @@ class NewAlert:
     strict_keywords: bool = True
     interval_seconds: int = 90
     notify_existing: bool = False
-    notify_price_changes: bool = True
 
 
 def _optional(row: aiosqlite.Row, key: str, default: Any = None) -> Any:
@@ -190,7 +186,6 @@ def _row_to_alert(row: aiosqlite.Row) -> Alert:
         strict_keywords=bool(row["strict_keywords"]),
         interval_seconds=row["interval_seconds"],
         notify_existing=bool(row["notify_existing"]),
-        notify_price_changes=bool(row["notify_price_changes"]),
         seeded=bool(row["seeded"]),
         active=bool(row["active"]),
         created_at=row["created_at"],
@@ -237,11 +232,16 @@ class Database:
             await self.conn.execute(
                 "ALTER TABLE alerts ADD COLUMN seeded INTEGER NOT NULL DEFAULT 0"
             )
-        if "notify_price_changes" not in columns:
-            await self.conn.execute(
-                "ALTER TABLE alerts ADD COLUMN notify_price_changes"
-                " INTEGER NOT NULL DEFAULT 1"
-            )
+        if "notify_price_changes" in columns:
+            try:
+                await self.conn.execute(
+                    "ALTER TABLE alerts DROP COLUMN notify_price_changes"
+                )
+            except aiosqlite.Error:
+                logger.warning(
+                    "No se pudo eliminar la columna obsoleta %s",
+                    "notify_price_changes",
+                )
         if "strict_keywords" not in columns:
             await self.conn.execute(
                 "ALTER TABLE alerts ADD COLUMN strict_keywords"
@@ -291,8 +291,8 @@ class Database:
                 wallapop_category_id, wallapop_shipping, radius_km,
                 vinted_catalog_ids, vinted_brand_ids, vinted_condition_ids,
                 exclude_words, strict_keywords, interval_seconds,
-                notify_existing, notify_price_changes, seeded, active, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
+                notify_existing, seeded, active, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
             """,
             (
                 new.chat_id,
@@ -311,7 +311,6 @@ class Database:
                 int(new.strict_keywords),
                 new.interval_seconds,
                 int(new.notify_existing),
-                int(new.notify_price_changes),
                 utcnow_iso(),
             ),
         )

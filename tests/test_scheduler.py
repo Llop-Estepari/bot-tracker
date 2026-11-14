@@ -212,7 +212,7 @@ async def test_baja_de_precio_avisa(database):
     assert prices["1"] == 80
 
 
-async def test_subida_de_precio_actualiza_sin_avisar(database):
+async def test_subida_de_precio_avisa(database):
     alert = await create_alert(database)
     source = FakeSource([make_listing("1", price=100)])
     notifier = FakeNotifier()
@@ -223,8 +223,8 @@ async def test_subida_de_precio_actualiza_sin_avisar(database):
     source.listings = [make_listing("1", price=120)]
     sent = await tracker.check_alert(await database.get_alert(alert.id))
 
-    assert sent == 0
-    assert notifier.price_changes == []
+    assert sent == 1
+    assert notifier.price_changes == [("1", 100.0, 120.0)]
     prices = await database.get_seen_prices(alert.id, "wallapop", ["1"])
     assert prices["1"] == 120
 
@@ -240,23 +240,6 @@ async def test_mismo_precio_no_avisa(database):
 
     assert sent == 0
     assert notifier.price_changes == []
-
-
-async def test_baja_sin_avisos_de_precio_no_notifica(database):
-    alert = await create_alert(database, notify_price_changes=False)
-    source = FakeSource([make_listing("1", price=100)])
-    notifier = FakeNotifier()
-    tracker = Tracker(make_settings(), database, {"wallapop": source}, notifier)
-
-    await tracker.check_alert(alert)
-
-    source.listings = [make_listing("1", price=80)]
-    sent = await tracker.check_alert(await database.get_alert(alert.id))
-
-    assert sent == 0
-    assert notifier.price_changes == []
-    prices = await database.get_seen_prices(alert.id, "wallapop", ["1"])
-    assert prices["1"] == 80
 
 
 async def test_precio_antiguo_sin_dato_se_rellena_sin_avisar(database):
@@ -295,7 +278,7 @@ async def test_limite_incluye_bajas_y_resume_el_resto(database):
 
     assert sent == 1
     assert len(notifier.price_changes) == 1
-    assert notifier.texts and "bajadas de precio" in notifier.texts[0]
+    assert notifier.texts and "cambios de precio" in notifier.texts[0]
     prices = await database.get_seen_prices(
         alert.id, "wallapop", ["1", "2"]
     )

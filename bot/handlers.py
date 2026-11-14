@@ -71,7 +71,7 @@ Creo búsquedas con filtros y te aviso por aquí cada vez que aparece un anuncio
 <b>Campos de /editar</b>
 <code>nombre</code>, <code>palabras</code>, <code>min</code>, <code>max</code>,
 <code>intervalo</code>, <code>excluir</code>, <code>plataformas</code>,
-<code>envio</code>, <code>estricto</code>, <code>precios</code>,
+<code>envio</code>, <code>estricto</code>,
 <code>distancia</code>
 
 📏 <b>Distancia</b> (solo Wallapop)
@@ -92,8 +92,8 @@ avisan anuncios con envío disponible. Desactívalo con
 Los <b>términos excluidos</b> son opcionales: <code>/editar 3 excluir -</code>
 los borra.
 
-Las <b>bajadas de precio</b> de anuncios ya vistos se avisan por defecto.
-Desactívalas con <code>/editar 3 precios off</code>.
+Los <b>cambios de precio</b> de anuncios ya vistos se avisan siempre: tanto
+subidas como bajadas.
 
 <b>Ejemplos</b>
 <code>/editar 3 min 100</code>
@@ -235,14 +235,8 @@ def format_alert(alert: Alert) -> str:
 
     status = "🟢 <b>activa</b>" if alert.active else "⏸ <b>pausada</b>"
     strict = " · 🎯 estricto" if alert.strict_keywords else ""
-    price_alerts = (
-        "📉 <i>precio</i>"
-        if alert.notify_price_changes
-        else "📉 <i>precio off</i>"
-    )
     lines.append(
-        f"⏱ <i>cada {alert.interval_seconds}s</i> · {status}{strict} ·"
-        f" {price_alerts}"
+        f"⏱ <i>cada {alert.interval_seconds}s</i> · {status}{strict}"
     )
     lines.append(
         "👁 <i>última comprobación: "
@@ -721,7 +715,7 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             update,
             "Uso: <code>/editar &lt;id&gt; &lt;campo&gt; &lt;valor&gt;</code>\n\n"
             "Campos: nombre, palabras, min, max, intervalo, excluir,"
-            " plataformas, estricto, precios, envio, distancia.\n"
+            " plataformas, estricto, envio, distancia.\n"
             "Ej.: <code>/editar 3 min 100</code> · "
             "<code>/editar 3 estricto off</code>",
         )
@@ -775,10 +769,6 @@ async def edit_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         elif field in {"estricto", "strict"}:
             await db.update_alert(
                 alert.id, strict_keywords=parse_toggle(value)
-            )
-        elif field in {"precios", "bajadas", "precio_bajadas"}:
-            await db.update_alert(
-                alert.id, notify_price_changes=parse_toggle(value)
             )
         elif field in {"envio", "envío", "shipping"}:
             await db.update_alert(
@@ -1306,9 +1296,8 @@ async def new_notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             else ""
         )
         + (
-            f"\n\n📉 Si un anuncio que ya te he avisado baja de precio, te"
-            f" avisaré también. Desactívalo con"
-            f" /editar {alert.id} precios off."
+            "\n\n📈📉 Los cambios de precio de anuncios que ya te he avisado"
+            " se avisan siempre, tanto subidas como bajadas."
         ),
     )
     context.user_data.pop("wizard", None)

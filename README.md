@@ -10,7 +10,7 @@ cable, ni servidor.
 - Palabras excluidas y **modo estricto** para eliminar resultados irrelevantes.
 - Cada búsqueda tiene su propio intervalo (60 s – 1 h, por defecto 90 s).
 - Deduplicación en SQLite: nunca recibes dos veces el mismo anuncio.
-- Aviso de **bajada de precio** cuando un anuncio ya visto se abarata.
+- Aviso de **cambio de precio** cuando un anuncio ya visto sube o baja.
 - Avisos con foto, precio, ubicación, distancia, país, vendedor y su nota.
 - Un único botón para abrir el anuncio en su plataforma.
 - Servicio **runit**: si el proceso cae, se levanta solo; arranca con el móvil.
@@ -187,7 +187,6 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 /editar 3 intervalo 120
 /editar 3 envio off
 /editar 3 estricto off
-/editar 3 precios off
 /editar 3 distancia 25
 /editar 3 distancia todo
 ```
@@ -366,7 +365,7 @@ cp ~/bot-tracker/tracker.db ~/storage/shared/bot-tracker-$(date +%F).db
 bash ~/bot-tracker/deploy/phone-doctor.sh
 ```
 
-Comprueba servicio, proceso, arranque automático, batería, red, logs y disco.
+Comprueba servicio, proceso, arranque automático, red, logs y disco.
 
 ### Logs
 
@@ -460,11 +459,11 @@ ls ~/.termux/boot/start-bot.sh 2>/dev/null || echo "sin arranque automático"
   avisar (salvo que hayas pedido lo contrario), para que no recibas un aluvión
   inicial.
 - Cada anuncio se guarda en `seen_items`: si ya se avisó, no se repite.
-- Si un anuncio ya visto **baja de precio**, se envía un aviso aparte con el
-  precio anterior y el nuevo. Se desactiva por búsqueda con
-  `/editar <id> precios off`. Solo se detecta mientras el anuncio siga
-  apareciendo en los resultados y cumpla los filtros; las APIs devuelven las
-  primeras posiciones ordenadas por novedad.
+- Si un anuncio ya visto **cambia de precio** (sube o baja), se envía un aviso
+  aparte con el precio anterior y el nuevo. No se puede desactivar por
+  búsqueda. Solo se detecta mientras el anuncio siga apareciendo en los
+  resultados y cumpla los filtros; las APIs devuelven las primeras posiciones
+  ordenadas por novedad.
 - Filtros server-side: palabras, precio, envío (Wallapop), distancia
   (Wallapop), categoría, marca y estado.
 - Filtros client-side: modo estricto, palabras excluidas, comprobación

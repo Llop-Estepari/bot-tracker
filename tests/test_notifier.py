@@ -38,10 +38,20 @@ def test_caption_sin_enlace_y_con_estilos():
 def test_caption_bajada_de_precio_con_porcentaje():
     caption = build_price_change_caption(make_listing(price=250.0), 300.0)
 
+    assert "📉 <b>¡Baja de precio!</b>" in caption
     assert "<s>300 €</s>" in caption
     assert "<b>250 €</b>" in caption
     assert "-17%" in caption
     assert "https://example.com/item" not in caption
+
+
+def test_caption_subida_de_precio_con_porcentaje():
+    caption = build_price_change_caption(make_listing(price=300.0), 250.0)
+
+    assert "📈 <b>¡Sube el precio!</b>" in caption
+    assert "<s>250 €</s>" in caption
+    assert "<b>300 €</b>" in caption
+    assert "+20%" in caption
 
 
 def test_caption_marca_anuncios_fuera_de_espana():

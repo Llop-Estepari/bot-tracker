@@ -226,7 +226,7 @@ class Tracker:
             )
 
             new_items: list[Listing] = []
-            price_drops: list[tuple[Listing, float]] = []
+            price_changes: list[tuple[Listing, float]] = []
             silent_updates: dict[str, float | None] = {}
 
             for listing in candidates:
@@ -240,11 +240,10 @@ class Tracker:
                     silent_updates[listing.item_id] = listing.price
                 elif (
                     (not first_pass or alert.notify_existing)
-                    and alert.notify_price_changes
                     and listing.price is not None
-                    and listing.price < old_price - 0.001
+                    and abs(listing.price - old_price) > 0.001
                 ):
-                    price_drops.append((listing, old_price))
+                    price_changes.append((listing, old_price))
                 elif listing.price != old_price:
                     silent_updates[listing.item_id] = listing.price
 
@@ -273,10 +272,10 @@ class Tracker:
             )
 
             budget = self._settings.max_notifications_per_check
-            overflow_drops: list[tuple[Listing, float]] = []
-            for index, (listing, old_price) in enumerate(price_drops):
+            overflow_changes: list[tuple[Listing, float]] = []
+            for index, (listing, old_price) in enumerate(price_changes):
                 if budget <= 0:
-                    overflow_drops = price_drops[index:]
+                    overflow_changes = price_changes[index:]
                     break
                 listing = await self._enrich(source, listing)
                 try:
@@ -285,7 +284,7 @@ class Tracker:
                     )
                 except Exception:
                     logger.exception(
-                        "No se pudo avisar de la bajada de precio del"
+                        "No se pudo avisar del cambio de precio del"
                         " anuncio %s (%s)",
                         listing.item_id,
                         platform,
@@ -298,20 +297,20 @@ class Tracker:
                 budget -= 1
                 await asyncio.sleep(SECONDS_BETWEEN_MESSAGES)
 
-            if overflow_drops:
+            if overflow_changes:
                 await self._db.update_seen_prices(
                     alert.id,
                     platform,
                     {
                         listing.item_id: listing.price
-                        for listing, _ in overflow_drops
+                        for listing, _ in overflow_changes
                     },
                 )
                 await self._notifier.send_text(
                     alert.chat_id,
                     f"🔔 <b>{html.escape(alert.name)}</b>:"
-                    f" {len(overflow_drops)} bajadas de precio más."
-                    f" Escribe /probar {alert.id} para verlas.",
+                    f" {len(overflow_changes)} cambios de precio más."
+                    f" Escribe /probar {alert.id} para verlos.",
                 )
 
             to_send = new_items[:budget]

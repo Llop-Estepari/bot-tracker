@@ -37,7 +37,6 @@ def make_alert() -> Alert:
         strict_keywords=True,
         interval_seconds=90,
         notify_existing=False,
-        notify_price_changes=True,
         seeded=True,
         active=True,
         created_at="",

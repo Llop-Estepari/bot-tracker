@@ -28,6 +28,7 @@ CREATE TABLE alerts (
     strict_keywords INTEGER NOT NULL DEFAULT 1,
     interval_seconds INTEGER NOT NULL,
     notify_existing INTEGER NOT NULL DEFAULT 0,
+    notify_price_changes INTEGER NOT NULL DEFAULT 1,
     seeded INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
@@ -76,7 +77,6 @@ async def test_crear_y_leer_alerta(database):
     assert alert.min_price == 50
     assert alert.active is True
     assert alert.notify_existing is False
-    assert alert.notify_price_changes is True
     assert alert.wallapop_shipping is True
     assert alert.strict_keywords is True
     assert alert.radius_km is None
@@ -94,7 +94,6 @@ async def test_actualizar_listas_y_booleanos(database):
         alert.id,
         platforms=["vinted"],
         vinted_brand_ids=[53, 417],
-        notify_price_changes=False,
         wallapop_shipping=False,
         strict_keywords=False,
         active=False,
@@ -103,7 +102,6 @@ async def test_actualizar_listas_y_booleanos(database):
     assert updated is not None
     assert updated.platforms == ["vinted"]
     assert updated.vinted_brand_ids == [53, 417]
-    assert updated.notify_price_changes is False
     assert updated.wallapop_shipping is False
     assert updated.strict_keywords is False
     assert updated.active is False
@@ -179,7 +177,7 @@ async def test_migracion_anade_columnas_de_precio(tmp_path):
             "PRAGMA table_info(seen_items)"
         ) as cursor:
             seen_columns = {row["name"] for row in await cursor.fetchall()}
-        assert "notify_price_changes" in alert_columns
+        assert "notify_price_changes" not in alert_columns
         assert "wallapop_shipping" in alert_columns
         assert "latitude" not in alert_columns
         assert "longitude" not in alert_columns

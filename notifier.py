@@ -54,7 +54,21 @@ def _listing_lines(
     if location_bits:
         lines.append(f"📍 <i>{' · '.join(location_bits)}</i>")
     if listing.seller:
-        lines.append(f"👤 <i>{html.escape(listing.seller)}</i>")
+        seller = listing.seller.strip()
+        rating_text = (
+            f"{listing.seller_rating:.1f}".replace(".", ",")
+            if listing.seller_rating is not None
+            else None
+        )
+        if rating_text is not None:
+            lines.append(
+                f"👤 <i>{html.escape(seller)}</i> ⭐ {rating_text}"
+            )
+        else:
+            lines.append(f"👤 <i>{html.escape(seller)}</i>")
+    elif listing.seller_rating is not None:
+        rating_text = f"{listing.seller_rating:.1f}".replace(".", ",")
+        lines.append(f"⭐ {rating_text}")
     source = SOURCE_LABELS.get(listing.source, listing.source.title())
     lines.append(f"🏪 <i>{source}</i>")
     return lines
@@ -83,14 +97,14 @@ def build_price_change_caption(
 
 
 def _build_markup(alert: Alert, listing: Listing) -> InlineKeyboardMarkup:
+    platform = SOURCE_LABELS.get(listing.source, listing.source.title())
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("🔗 Abrir anuncio", url=listing.url)],
             [
                 InlineKeyboardButton(
-                    "🔕 Silenciar búsqueda", callback_data=f"mute:{alert.id}"
+                    f"🔗 Abrir en {platform}", url=listing.url
                 )
-            ],
+            ]
         ]
     )
 

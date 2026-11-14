@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Crea los atajos de Termux:Widget para controlar el bot desde la pantalla
-# de inicio.
+# de inicio: Actualizar bot y Estado.
 #
 # Uso:
 #   bash deploy/phone-shortcuts.sh
@@ -11,7 +11,6 @@ set -euo pipefail
 
 DEST="${BOT_DIR:-$HOME/bot-tracker}"
 SHORTCUTS="$HOME/.shortcuts"
-TERMUX_BIN="/data/data/com.termux/files/usr/bin"
 
 die() {
     echo "❌ $*" >&2
@@ -35,29 +34,16 @@ write_shortcut() {
     echo "· $name"
 }
 
-write_shortcut "Instalar bot" \
-    "exec bash \"$DEST/install.sh\""
-
 write_shortcut "Actualizar bot" \
     "exec bash \"$DEST/update.sh\""
 
 write_shortcut "Estado" \
     "exec bash \"$DEST/deploy/phone-doctor.sh\""
 
-write_shortcut "Reiniciar bot" \
-    "\"$TERMUX_BIN/sv\" restart bot 2>/dev/null || \"$TERMUX_BIN/sv\" up bot" \
-    "sleep 2" \
-    "\"$TERMUX_BIN/sv\" status bot"
-
-write_shortcut "Ver logs" \
-    "tail -n 100 -f \"$DEST/logs/current\" 2>/dev/null || tail -n 100 -f \"$DEST/bot.log\""
-
-write_shortcut "Backup" \
-    "STAMP=\$(date +%F-%H%M)" \
-    "DEST_DIR=/sdcard/Download" \
-    "[ -d \"\$DEST_DIR\" ] || DEST_DIR=\"\$HOME\"" \
-    "cp \"$DEST/tracker.db\" \"\$DEST_DIR/bot-tracker-\$STAMP.db\"" \
-    "echo \"Copia de tracker.db guardada en \$DEST_DIR\""
+# Limpia atajos de versiones anteriores.
+for obsolete in "Backup" "Ver logs" "Instalar bot" "Reiniciar bot"; do
+    rm -f "$SHORTCUTS/$obsolete"
+done
 
 echo
 echo "✅ Atajos creados en $SHORTCUTS"

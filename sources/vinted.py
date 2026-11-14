@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DISPLAY_NAME = "Vinted"
+SELLER_CACHE_SECONDS = 24 * 60 * 60
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -60,6 +63,7 @@ def parse_search(payload: dict[str, Any], base_url: str) -> list[Listing]:
         url = path if path.startswith("http") else f"{base_url}{path}"
 
         user = item.get("user") or {}
+        user_id = user.get("id")
 
         listings.append(
             Listing(
@@ -71,9 +75,23 @@ def parse_search(payload: dict[str, Any], base_url: str) -> list[Listing]:
                 url=url,
                 photo_url=photo_url,
                 seller=user.get("login"),
+                seller_id=str(user_id) if user_id not in (None, "") else None,
             )
         )
     return listings
+
+
+def parse_seller_user(payload: dict[str, Any]) -> tuple[str | None, float | None]:
+    """Devuelve (login, nota sobre 5) del vendedor de Vinted."""
+    user = payload.get("user") or payload
+    login = user.get("login")
+    name = str(login).strip() if login else None
+    feedback_count = int(user.get("feedback_count") or 0)
+    reputation = user.get("feedback_reputation")
+    rating: float | None = None
+    if feedback_count > 0 and isinstance(reputation, (int, float)):
+        rating = round(float(reputation) * 5, 1)
+    return name, rating
 
 
 class VintedSource:
@@ -104,6 +122,9 @@ class VintedSource:
             "Origin": self._base_url,
             "Referer": f"{self._base_url}/",
         }
+        self._seller_cache: dict[
+            str, tuple[str | None, float | None, float]
+        ] = {}
 
     def _has_token(self) -> bool:
         return any(
@@ -191,6 +212,57 @@ class VintedSource:
             raise SourceError("Formato inesperado en la respuesta de Vinted")
 
         return parse_search(payload, self._base_url)
+
+    async def enrich(self, listing: Listing) -> Listing:
+        """Completa el nombre y la valoración del vendedor (caché 24 h)."""
+        if not listing.seller_id:
+            return listing
+
+        now = time.monotonic()
+        cached = self._seller_cache.get(listing.seller_id)
+        if cached is not None and now - cached[2] < SELLER_CACHE_SECONDS:
+            name, rating, _ = cached
+            return replace(
+                listing,
+                seller=listing.seller if listing.seller else name,
+                seller_rating=(
+                    listing.seller_rating
+                    if listing.seller_rating is not None
+                    else rating
+                ),
+            )
+
+        name: str | None = None
+        rating: float | None = None
+        user_id = listing.seller_id
+        try:
+            await self._ensure_session()
+            for attempt in (1, 2):
+                response = await self._client.get(
+                    f"{self._base_url}/api/v2/users/{user_id}",
+                    headers=self._api_headers,
+                )
+                if response.status_code in (401, 403) and attempt == 1:
+                    await self._ensure_session(force=True)
+                    continue
+                break
+            if response.status_code == 200:
+                name, rating = parse_seller_user(response.json())
+        except (httpx.HTTPError, SourceError, ValueError):
+            logger.warning(
+                "No se pudo obtener el vendedor %s de Vinted", user_id
+            )
+
+        self._seller_cache[user_id] = (name, rating, now)
+        return replace(
+            listing,
+            seller=listing.seller if listing.seller else name,
+            seller_rating=(
+                listing.seller_rating
+                if listing.seller_rating is not None
+                else rating
+            ),
+        )
 
     async def close(self) -> None:
         await self._client.aclose()

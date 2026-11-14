@@ -35,6 +35,8 @@ class Listing:
     photo_url: str | None = None
     location: str | None = None
     seller: str | None = None
+    seller_id: str | None = None
+    seller_rating: float | None = None
     description: str | None = None
     created_at: datetime | None = None
     country_code: str | None = None
@@ -49,6 +51,9 @@ class Source(Protocol):
 
     async def search(self, alert: Alert) -> list[Listing]:
         """Devuelve los anuncios más recientes que encajan con la alerta."""
+
+    async def enrich(self, listing: Listing) -> Listing:
+        """Completa datos del anuncio (vendedor, valoración) si es posible."""
 
     async def close(self) -> None:
         """Libera recursos de red."""

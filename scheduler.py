@@ -211,6 +211,7 @@ class Tracker:
                 if budget <= 0:
                     overflow_drops = price_drops[index:]
                     break
+                listing = await self._enrich(source, listing)
                 try:
                     await self._notifier.send_price_change(
                         alert, listing, old_price
@@ -248,6 +249,7 @@ class Tracker:
 
             to_send = new_items[:budget]
             for listing in to_send:
+                listing = await self._enrich(source, listing)
                 try:
                     await self._notifier.send_listing(alert, listing)
                 except Exception:
@@ -303,6 +305,21 @@ class Tracker:
         return results
 
     # ----------------------------- ayudas ------------------------------- #
+
+    async def _enrich(self, source: Source, listing: Listing) -> Listing:
+        """Completa datos del vendedor; un fallo nunca bloquea el aviso."""
+        enrich = getattr(source, "enrich", None)
+        if enrich is None:
+            return listing
+        try:
+            return await enrich(listing)
+        except Exception:  # noqa: BLE001 - fail-open deliberado
+            logger.warning(
+                "No se pudo completar el vendedor del anuncio %s (%s)",
+                listing.item_id,
+                listing.source,
+            )
+            return listing
 
     def _jittered_interval(self, alert: Alert) -> float:
         return alert.interval_seconds + random.uniform(

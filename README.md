@@ -11,8 +11,8 @@ cable, ni servidor.
 - Cada búsqueda tiene su propio intervalo (60 s – 1 h, por defecto 90 s).
 - Deduplicación en SQLite: nunca recibes dos veces el mismo anuncio.
 - Aviso de **bajada de precio** cuando un anuncio ya visto se abarata.
-- Avisos con foto, precio, ubicación, distancia y país, con botón para
-  silenciar la búsqueda.
+- Avisos con foto, precio, ubicación, distancia, país, vendedor y su nota.
+- Un único botón para abrir el anuncio en su plataforma.
 - Servicio **runit**: si el proceso cae, se levanta solo; arranca con el móvil.
 - Todo se gestiona desde el chat: no hay que editar archivos para cambiar
   filtros.
@@ -237,6 +237,24 @@ El radio se envía a Wallapop (`distance_in_km`) y además se comprueba en local
 con la distancia real del anuncio, para que el filtro sea fiable aunque la API
 lo ignore.
 
+### Avisos
+
+Cada aviso incluye foto, título, precio, ubicación/distancia, vendedor y
+plataforma. El botón abre el anuncio directamente:
+
+```text
+[ 🔗 Abrir en Wallapop ]
+```
+
+El vendedor se muestra con su nota sobre 5 cuando la plataforma la ofrece:
+
+```text
+👤 A3 A. ⭐ 5,0
+```
+
+Si no tiene valoraciones, aparece solo el nombre. Para silenciar una búsqueda,
+usa `/pausar <id>`.
+
 ### Filtros avanzados
 
 Los IDs salen de la URL de cada web (por ejemplo, una categoría de Vinted
@@ -291,6 +309,37 @@ bash ~/bot-tracker/update.sh
 El script baja el servicio runit, guarda un backup de `.env`, `tracker.db` y
 del worktree, actualiza el código, instala dependencias si cambiaron, arranca y
 verifica la nueva versión. Si algo falla, vuelve al commit anterior.
+
+### Widgets de Termux
+
+Solo se crean dos atajos:
+
+| Widget | Acción |
+| --- | --- |
+| **Actualizar bot** | `update.sh` |
+| **Estado** | `phone-doctor.sh` |
+
+Se regeneran al instalar y al actualizar. Los atajos antiguos (*Backup*,
+*Ver logs*, *Instalar bot*, *Reiniciar bot*) se eliminan automáticamente. Para
+limpiarlos a mano:
+
+```bash
+rm -f ~/.shortcuts/"Backup" \
+      ~/.shortcuts/"Ver logs" \
+      ~/.shortcuts/"Instalar bot" \
+      ~/.shortcuts/"Reiniciar bot"
+```
+
+Si el widget del escritorio no se refresca, quítalo y vuelve a añadirlo
+(Widgets → Termux:Widget).
+
+Las acciones que ya no tienen widget siguen disponibles:
+
+```bash
+sv restart bot
+tail -f ~/bot-tracker/logs/current
+cp ~/bot-tracker/tracker.db ~/storage/shared/bot-tracker-$(date +%F).db
+```
 
 ### Diagnóstico
 

@@ -11,7 +11,12 @@ import pytest
 from db import Alert
 from sources.vinted import build_api_base
 from sources.vinted import parse_search as parse_vinted
-from sources.wallapop import WallapopSource
+from sources.vinted import parse_seller_user as parse_vinted_seller
+from sources.wallapop import (
+    WallapopSource,
+    parse_seller_rating,
+    parse_seller_user,
+)
 from sources.wallapop import parse_search as parse_wallapop
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -129,6 +134,43 @@ def test_wallapop_parsea_pais_y_coordenadas():
     assert first.country_code == "ES"
     assert first.latitude == pytest.approx(40.45751707979195)
     assert first.longitude == pytest.approx(-3.47398882013767)
+    assert first.seller_id
+
+
+def test_wallapop_parsea_vendedor_y_valoracion():
+    assert parse_seller_user({"micro_name": "A3 A."}) == "A3 A."
+    assert parse_seller_user({}) is None
+    stats = {
+        "rating_average": 5.0,
+        "counters": [{"type": "reviews", "value": 58}],
+    }
+    assert parse_seller_rating(stats) == 5.0
+    assert parse_seller_rating({"rating_average": 5.0, "counters": []}) is None
+
+
+def test_vinted_parsea_vendedor_y_valoracion():
+    listings = parse_vinted(
+        load("vinted_search.json"), "https://www.vinted.es"
+    )
+    assert listings[0].seller_id
+
+    payload = {
+        "user": {
+            "login": "djmir",
+            "feedback_count": 5,
+            "feedback_reputation": 1.0,
+        }
+    }
+    assert parse_vinted_seller(payload) == ("djmir", 5.0)
+
+    empty = {
+        "user": {
+            "login": "nuevo",
+            "feedback_count": 0,
+            "feedback_reputation": 0.0,
+        }
+    }
+    assert parse_vinted_seller(empty) == ("nuevo", None)
 
 
 def test_wallapop_envia_radio_con_origen():

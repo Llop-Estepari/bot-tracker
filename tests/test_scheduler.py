@@ -365,3 +365,18 @@ async def test_fallo_de_red_reintenta_en_una_hora(database, monkeypatch):
     assert await database.get_state(
         scheduler_module.LAST_VERSION_CHECK_KEY
     ) is None
+
+
+def test_status_incluye_el_ultimo_ciclo():
+    import time as time_module
+
+    tracker = Tracker(make_settings(), None, {}, FakeNotifier())
+    tracker._last_cycle_at = time_module.time() - 4
+    tracker._cycle_alerts = 3
+    tracker._cycle_count = 7
+
+    status = tracker.status()
+
+    assert status["last_cycle_seconds_ago"] >= 4
+    assert status["cycle_alerts"] == 3
+    assert status["cycle_count"] == 7

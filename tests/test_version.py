@@ -47,3 +47,18 @@ def test_estado_incluye_enfriamientos():
     )
 
     assert "Vinted 120s" in text
+
+
+def test_estado_incluye_ultimo_ciclo():
+    text = format_status(
+        {"active_alerts": 1, "alerts": 2, "seen_items": 10},
+        {
+            "uptime_seconds": 65,
+            "cooldowns": {},
+            "last_cycle_seconds_ago": 5,
+            "cycle_alerts": 2,
+        },
+    )
+
+    assert "Último ciclo" in text
+    assert "2 alertas" in text

@@ -32,6 +32,9 @@ SECONDS_BETWEEN_MESSAGES = 0.8
 RATE_LIMIT_COOLDOWN = 180
 BLOCKED_COOLDOWN = 900
 VERSION_RETRY_SECONDS = 3600
+VERSION_CHECK_TIMEOUT = 30
+VERSION_LOOP_SECONDS = 60
+CHECK_TIMEOUT_SECONDS = 180
 LAST_VERSION_CHECK_KEY = "last_version_check"
 
 
@@ -61,40 +64,105 @@ class Tracker:
         self._stop = asyncio.Event()
         self._started_at = time.time()
         self._next_version_check: datetime | None = None
+        self._last_cycle_at: float | None = None
+        self._cycle_alerts = 0
+        self._cycle_count = 0
 
     # ----------------------------- ciclo -------------------------------- #
 
     async def run(self) -> None:
         logger.info("Scheduler iniciado")
+        version_task = asyncio.create_task(
+            self._version_loop(), name="version-check"
+        )
+        try:
+            while not self._stop.is_set():
+                try:
+                    alerts = await self._db.list_alerts(active_only=True)
+                except Exception:  # pragma: no cover - protección del bucle
+                    logger.exception("No se pudieron cargar las alertas")
+                    alerts = []
+
+                now = time.monotonic()
+                for alert in alerts:
+                    if self._stop.is_set():
+                        break
+                    if now < self._next_run.get(alert.id, 0.0):
+                        continue
+                    self._next_run[alert.id] = now + self._jittered_interval(
+                        alert
+                    )
+                    started = time.monotonic()
+                    try:
+                        await asyncio.wait_for(
+                            self.check_alert(alert),
+                            timeout=CHECK_TIMEOUT_SECONDS,
+                        )
+                    except TimeoutError:
+                        logger.warning(
+                            "Alerta #%s tardó más de %ss; se omite en este"
+                            " ciclo",
+                            alert.id,
+                            CHECK_TIMEOUT_SECONDS,
+                        )
+                    except Exception:  # pragma: no cover - protección
+                        logger.exception(
+                            "Error comprobando la alerta #%s", alert.id
+                        )
+                    else:
+                        elapsed = time.monotonic() - started
+                        if elapsed > 10:
+                            logger.info(
+                                "Alerta #%s comprobada en %.1fs",
+                                alert.id,
+                                elapsed,
+                            )
+                    await asyncio.sleep(SECONDS_BETWEEN_ALERTS)
+
+                self._last_cycle_at = time.time()
+                self._cycle_alerts = len(alerts)
+                self._cycle_count += 1
+
+                try:
+                    await asyncio.wait_for(
+                        self._stop.wait(), timeout=IDLE_SECONDS
+                    )
+                except TimeoutError:
+                    pass
+        finally:
+            version_task.cancel()
+            try:
+                await version_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Scheduler detenido")
+
+    async def _version_loop(self) -> None:
+        """Comprueba versiones sin bloquear el bucle de alertas."""
         while not self._stop.is_set():
             try:
-                await self._maybe_check_version()
+                await asyncio.wait_for(
+                    self._maybe_check_version(),
+                    timeout=VERSION_CHECK_TIMEOUT,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "La comprobación de versión tardó más de %ss;"
+                    " se reintentará",
+                    VERSION_CHECK_TIMEOUT,
+                )
+                self._next_version_check = (
+                    datetime.now().astimezone()
+                    + timedelta(seconds=VERSION_RETRY_SECONDS)
+                )
             except Exception:  # pragma: no cover - protección del bucle
                 logger.exception("Error comprobando actualizaciones")
             try:
-                alerts = await self._db.list_alerts(active_only=True)
-            except Exception:  # pragma: no cover - protección del bucle
-                logger.exception("No se pudieron cargar las alertas")
-                alerts = []
-
-            now = time.monotonic()
-            for alert in alerts:
-                if self._stop.is_set():
-                    break
-                if now < self._next_run.get(alert.id, 0.0):
-                    continue
-                self._next_run[alert.id] = now + self._jittered_interval(alert)
-                try:
-                    await self.check_alert(alert)
-                except Exception:  # pragma: no cover - protección del bucle
-                    logger.exception("Error comprobando la alerta #%s", alert.id)
-                await asyncio.sleep(SECONDS_BETWEEN_ALERTS)
-
-            try:
-                await asyncio.wait_for(self._stop.wait(), timeout=IDLE_SECONDS)
+                await asyncio.wait_for(
+                    self._stop.wait(), timeout=VERSION_LOOP_SECONDS
+                )
             except TimeoutError:
                 pass
-        logger.info("Scheduler detenido")
 
     def stop(self) -> None:
         self._stop.set()
@@ -106,9 +174,15 @@ class Tracker:
             for platform, until in self._cooldown_until.items()
             if until > now
         }
+        last_cycle = None
+        if self._last_cycle_at is not None:
+            last_cycle = int(time.time() - self._last_cycle_at)
         return {
             "uptime_seconds": int(time.time() - self._started_at),
             "cooldowns": cooldowns,
+            "last_cycle_seconds_ago": last_cycle,
+            "cycle_alerts": self._cycle_alerts,
+            "cycle_count": self._cycle_count,
         }
 
     # --------------------------- comprobación --------------------------- #

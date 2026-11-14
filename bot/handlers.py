@@ -6,6 +6,7 @@ import asyncio
 import html
 import logging
 import warnings
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -173,6 +174,35 @@ async def enforce_auth(
     raise ApplicationHandlerStop
 
 
+def format_local_time(raw: str | None, tz: tzinfo | None = None) -> str:
+    """Convierte un ISO en UTC a la hora local del móvil."""
+    if not raw:
+        return "nunca"
+    try:
+        value = datetime.fromisoformat(raw)
+    except ValueError:
+        return raw
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    value = value.astimezone(tz) if tz is not None else value.astimezone()
+    return value.strftime("%d/%m/%Y %H:%M:%S")
+
+
+def format_age(seconds: float) -> str:
+    """Duración corta: 45s, 9m, 2h 5m, 3d."""
+    total = max(0, int(seconds))
+    if total < 60:
+        return f"{total}s"
+    minutes, _ = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h" if hours else f"{days}d"
+
+
 def format_alert(alert: Alert) -> str:
     platforms = " + ".join(
         PLATFORM_LABELS.get(platform, platform) for platform in alert.platforms
@@ -241,9 +271,22 @@ def format_alert(alert: Alert) -> str:
     )
     lines.append(
         "👁 <i>última comprobación: "
-        + html.escape(alert.last_checked_at or "nunca")
+        + html.escape(format_local_time(alert.last_checked_at))
         + "</i>"
     )
+    if alert.active and alert.last_checked_at:
+        try:
+            checked = datetime.fromisoformat(alert.last_checked_at)
+        except ValueError:
+            checked = None
+        if checked is not None:
+            if checked.tzinfo is None:
+                checked = checked.replace(tzinfo=UTC)
+            age = (datetime.now(UTC) - checked).total_seconds()
+            if age > alert.interval_seconds * 3:
+                lines.append(
+                    f"⚠️ <i>sin comprobar desde hace {format_age(age)}</i>"
+                )
     return "\n".join(lines)
 
 
@@ -530,6 +573,12 @@ def format_status(stats: dict[str, int], status: dict[str, object]) -> str:
             for platform, seconds in dict(cooldowns).items()
         )
         lines.append(f"🚧 <b>Enfriando:</b> <i>{text}</i>")
+    last_cycle = status.get("last_cycle_seconds_ago")
+    if isinstance(last_cycle, int):
+        lines.append(
+            f"⚙️ <b>Último ciclo:</b> <i>hace {format_age(last_cycle)} ·"
+            f" {status.get('cycle_alerts', 0)} alertas</i>"
+        )
     return "\n".join(lines)
 
 

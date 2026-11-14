@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,7 @@ class FakeNotifier:
         self.listings: list[str] = []
         self.price_changes: list[tuple[str, float, float | None]] = []
         self.texts: list[str] = []
+        self.recipients: list[tuple[int, str]] = []
 
     async def send_listing(self, alert, listing) -> None:
         self.listings.append(listing.item_id)
@@ -76,6 +78,7 @@ class FakeNotifier:
 
     async def send_text(self, chat_id, text, reply_markup=None) -> None:
         self.texts.append(text)
+        self.recipients.append((chat_id, text))
 
 
 @pytest.fixture
@@ -297,3 +300,81 @@ async def test_limite_incluye_bajas_y_resume_el_resto(database):
         alert.id, "wallapop", ["1", "2"]
     )
     assert prices == {"1": 80.0, "2": 70.0}
+
+
+def test_next_midnight_es_la_siguiente_medianoche():
+    now = datetime.now().astimezone().replace(
+        hour=22, minute=30, second=0, microsecond=0
+    )
+
+    result = scheduler_module.next_midnight(now)
+
+    assert result.hour == 0
+    assert result.minute == 0
+    assert result.date() == now.date() + timedelta(days=1)
+
+
+async def test_aviso_diario_de_version(database, monkeypatch):
+    notifier = FakeNotifier()
+    tracker = Tracker(
+        make_settings(admin_chat_ids=frozenset({1, 2})),
+        database,
+        {},
+        notifier,
+    )
+    monkeypatch.setattr(
+        scheduler_module, "fetch_remote_version", lambda: "0.1.999999"
+    )
+    now = datetime.now().astimezone().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    assert await tracker._maybe_check_version(now=now) is True
+    assert [chat for chat, _ in notifier.recipients] == [1, 2]
+    assert "Actualización disponible" in notifier.texts[0]
+    assert (
+        await database.get_state(scheduler_module.LAST_VERSION_CHECK_KEY)
+        == now.date().isoformat()
+    )
+
+    # Mismo día: no repite aunque se reinicie.
+    tracker._next_version_check = None
+    notifier.texts.clear()
+    notifier.recipients.clear()
+    assert await tracker._maybe_check_version(now=now) is False
+    assert notifier.texts == []
+
+    # Al día siguiente vuelve a avisar.
+    next_day = now + timedelta(days=1)
+    assert await tracker._maybe_check_version(now=next_day) is True
+    assert notifier.texts
+
+
+async def test_sin_version_nueva_no_avisa(database, monkeypatch):
+    notifier = FakeNotifier()
+    tracker = Tracker(make_settings(), database, {}, notifier)
+    monkeypatch.setattr(
+        scheduler_module, "fetch_remote_version", lambda: "0.1.0"
+    )
+    now = datetime.now().astimezone()
+
+    assert await tracker._maybe_check_version(now=now) is False
+    assert notifier.texts == []
+
+
+async def test_fallo_de_red_reintenta_en_una_hora(database, monkeypatch):
+    def boom():
+        raise OSError("sin red")
+
+    notifier = FakeNotifier()
+    tracker = Tracker(make_settings(), database, {}, notifier)
+    monkeypatch.setattr(scheduler_module, "fetch_remote_version", boom)
+    now = datetime.now().astimezone()
+
+    assert await tracker._maybe_check_version(now=now) is False
+    assert tracker._next_version_check == now + timedelta(
+        seconds=scheduler_module.VERSION_RETRY_SECONDS
+    )
+    assert await database.get_state(
+        scheduler_module.LAST_VERSION_CHECK_KEY
+    ) is None

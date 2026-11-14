@@ -7,10 +7,14 @@ import html
 import logging
 import random
 import time
+from datetime import datetime, timedelta
+from datetime import time as dt_time
 from typing import TYPE_CHECKING
 
 from filters import matches
 from sources.base import BlockedError, Listing, RateLimitError, SourceError
+from updates import fetch_remote_version, is_newer
+from version import __version__
 
 if TYPE_CHECKING:
     from config import Settings
@@ -25,6 +29,15 @@ IDLE_SECONDS = 5.0
 SECONDS_BETWEEN_MESSAGES = 0.8
 RATE_LIMIT_COOLDOWN = 180
 BLOCKED_COOLDOWN = 900
+VERSION_RETRY_SECONDS = 3600
+LAST_VERSION_CHECK_KEY = "last_version_check"
+
+
+def next_midnight(now: datetime) -> datetime:
+    """Próxima medianoche local a partir de ``now``."""
+    local = now.astimezone()
+    tomorrow = local.date() + timedelta(days=1)
+    return datetime.combine(tomorrow, dt_time.min, tzinfo=local.tzinfo)
 
 
 class Tracker:
@@ -45,12 +58,17 @@ class Tracker:
         self._cooldown_until: dict[str, float] = {}
         self._stop = asyncio.Event()
         self._started_at = time.time()
+        self._next_version_check: datetime | None = None
 
     # ----------------------------- ciclo -------------------------------- #
 
     async def run(self) -> None:
         logger.info("Scheduler iniciado")
         while not self._stop.is_set():
+            try:
+                await self._maybe_check_version()
+            except Exception:  # pragma: no cover - protección del bucle
+                logger.exception("Error comprobando actualizaciones")
             try:
                 alerts = await self._db.list_alerts(active_only=True)
             except Exception:  # pragma: no cover - protección del bucle
@@ -92,6 +110,55 @@ class Tracker:
         }
 
     # --------------------------- comprobación --------------------------- #
+
+    async def _maybe_check_version(
+        self, now: datetime | None = None
+    ) -> bool:
+        """Comprueba novedades una vez al día y avisa a los administradores."""
+        moment = now or datetime.now().astimezone()
+
+        if self._next_version_check is None:
+            last = await self._db.get_state(LAST_VERSION_CHECK_KEY)
+            if last == moment.date().isoformat():
+                self._next_version_check = next_midnight(moment)
+                return False
+            self._next_version_check = moment
+
+        if moment < self._next_version_check:
+            return False
+
+        try:
+            remote = await asyncio.to_thread(fetch_remote_version)
+        except (OSError, ValueError) as exc:
+            logger.warning("No se pudo comprobar la versión: %s", exc)
+            self._next_version_check = moment + timedelta(
+                seconds=VERSION_RETRY_SECONDS
+            )
+            return False
+
+        self._next_version_check = next_midnight(moment)
+        await self._db.set_state(
+            LAST_VERSION_CHECK_KEY, moment.date().isoformat()
+        )
+
+        if not is_newer(remote, __version__):
+            return False
+
+        text = (
+            "🆕 <b>Actualización disponible</b>\n"
+            f"Instalada: <code>v{__version__}</code>\n"
+            f"Nueva: <code>v{remote}</code>\n\n"
+            "Usa /actualizar para instalarla."
+        )
+        for chat_id in sorted(self._settings.effective_admin_chat_ids):
+            try:
+                await self._notifier.send_text(chat_id, text)
+            except Exception:
+                logger.exception(
+                    "No se pudo avisar de la actualización al chat %s",
+                    chat_id,
+                )
+        return True
 
     async def check_alert(self, alert: Alert) -> int:
         """Comprueba una alerta y devuelve cuántos avisos se enviaron."""

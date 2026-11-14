@@ -252,3 +252,13 @@ async def test_migracion_readd_strict_keywords(tmp_path):
         assert fetched.strict_keywords is True
     finally:
         await database.close()
+
+
+async def test_estado_interno_clave_valor(database):
+    assert await database.get_state("last_version_check") is None
+
+    await database.set_state("last_version_check", "2026-11-14")
+    assert await database.get_state("last_version_check") == "2026-11-14"
+
+    await database.set_state("last_version_check", "2026-11-15")
+    assert await database.get_state("last_version_check") == "2026-11-15"

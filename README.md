@@ -298,6 +298,25 @@ con la versión nueva o con el error.
 
 Si el bot no responde, usa el widget o el comando de abajo.
 
+#### Aviso automático de actualización
+
+Cada día a las **00:00** (hora local del móvil), el bot compara su versión con
+la publicada en GitHub. Si hay una nueva, envía un mensaje a los
+administradores:
+
+```text
+🆕 Actualización disponible
+Instalada: v0.1.435467
+Nueva:     v0.1.435468
+
+Usa /actualizar para instalarla.
+```
+
+- Solo avisa a `ADMIN_CHAT_IDS` (o `ALLOWED_CHAT_IDS` si está vacío).
+- Repite el aviso cada día mientras la actualización siga pendiente.
+- Si el bot estaba apagado a medianoche, comprueba al arrancar.
+- Si falla la red, reintenta en una hora.
+
 #### Desde Termux
 
 Un toque en el widget **Actualizar bot** (Termux:Widget) o:
@@ -554,6 +573,8 @@ arranque. El esquema es:
   `0.1.435465`, `0.1.435466`…
 - No hay `major`, `minor` ni `patch`. Cada release es una build nueva.
 - El contador se guarda en `BUILD` y `version.py` debe coincidir con él.
+- **Cada día a las 00:00** el bot comprueba si hay una build nueva y avisa a
+  los administradores (ver sección 3).
 
 ### Publicar una build
 

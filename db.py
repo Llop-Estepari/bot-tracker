@@ -55,6 +55,12 @@ CREATE TABLE IF NOT EXISTS user_locations (
     longitude REAL NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bot_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 LIST_FIELDS = {
@@ -423,6 +429,28 @@ class Database:
         )
         await self.conn.commit()
         return cursor.rowcount > 0
+
+    # ---------------------------- estado interno ------------------------- #
+
+    async def get_state(self, key: str) -> str | None:
+        async with self.conn.execute(
+            "SELECT value FROM bot_state WHERE key = ?", (key,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return str(row["value"]) if row is not None else None
+
+    async def set_state(self, key: str, value: str) -> None:
+        await self.conn.execute(
+            """
+            INSERT INTO bot_state (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            """,
+            (key, value, utcnow_iso()),
+        )
+        await self.conn.commit()
 
     # -------------------------- anuncios vistos ------------------------- #
 

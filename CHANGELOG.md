@@ -5,6 +5,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 La versión es `0.1.<build>`: el último número es un contador que aumenta en
 cada publicación.
 
+## [0.1.435467] - 2026-11-14
+
+### Cambios
+
+- Quita la plataforma del texto del aviso; queda en el botón
+
 ## [0.1.435466] - 2026-11-14
 
 ### Cambios

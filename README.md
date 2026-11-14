@@ -239,8 +239,8 @@ lo ignore.
 
 ### Avisos
 
-Cada aviso incluye foto, título, precio, ubicación/distancia, vendedor y
-plataforma. El botón abre el anuncio directamente:
+Cada aviso incluye foto, título, precio, ubicación/distancia y vendedor. La
+plataforma aparece en el botón, que abre el anuncio directamente:
 
 ```text
 [ 🔗 Abrir en Wallapop ]

@@ -29,9 +29,10 @@ def test_caption_sin_enlace_y_con_estilos():
     assert "https://example.com/item" not in caption
     assert "href" not in caption
     assert "<b>PlayStation 5 &lt;Slim&gt;</b>" in caption
-    assert "<i>Wallapop</i>" in caption
     assert "<i>Madrid</i>" in caption
     assert "<i>vendedor</i>" in caption
+    assert "Wallapop" not in caption
+    assert "Vinted" not in caption
 
 
 def test_caption_bajada_de_precio_con_porcentaje():

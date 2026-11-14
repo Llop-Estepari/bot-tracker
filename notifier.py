@@ -69,8 +69,6 @@ def _listing_lines(
     elif listing.seller_rating is not None:
         rating_text = f"{listing.seller_rating:.1f}".replace(".", ",")
         lines.append(f"⭐ {rating_text}")
-    source = SOURCE_LABELS.get(listing.source, listing.source.title())
-    lines.append(f"🏪 <i>{source}</i>")
     return lines
 
 

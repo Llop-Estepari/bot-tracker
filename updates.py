@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from urllib.request import urlopen
 
 REMOTE_VERSION_URL = (
@@ -35,3 +36,12 @@ def fetch_remote_version(timeout: float = 10.0) -> str:
     version = match.group(1).strip()
     parse_version(version)
     return version
+
+
+def read_update_status(path: Path) -> str | None:
+    """Lee el estado dejado por self-update.sh, si existe."""
+    try:
+        value = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return value or None

@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from datetime import time as dt_time
 from typing import TYPE_CHECKING
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 from filters import matches
 from sources.base import BlockedError, Listing, RateLimitError, SourceError
 from updates import fetch_remote_version, is_newer
@@ -150,9 +152,20 @@ class Tracker:
             f"Nueva: <code>v{remote}</code>\n\n"
             "Usa /actualizar para instalarla."
         )
+        markup = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔄 Actualizar ahora", callback_data="upd:yes"
+                    )
+                ]
+            ]
+        )
         for chat_id in sorted(self._settings.effective_admin_chat_ids):
             try:
-                await self._notifier.send_text(chat_id, text)
+                await self._notifier.send_text(
+                    chat_id, text, reply_markup=markup
+                )
             except Exception:
                 logger.exception(
                     "No se pudo avisar de la actualización al chat %s",

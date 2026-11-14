@@ -67,6 +67,7 @@ class FakeNotifier:
         self.price_changes: list[tuple[str, float, float | None]] = []
         self.texts: list[str] = []
         self.recipients: list[tuple[int, str]] = []
+        self.markups: list[object] = []
 
     async def send_listing(self, alert, listing) -> None:
         self.listings.append(listing.item_id)
@@ -79,6 +80,7 @@ class FakeNotifier:
     async def send_text(self, chat_id, text, reply_markup=None) -> None:
         self.texts.append(text)
         self.recipients.append((chat_id, text))
+        self.markups.append(reply_markup)
 
 
 @pytest.fixture
@@ -315,6 +317,8 @@ async def test_aviso_diario_de_version(database, monkeypatch):
     assert await tracker._maybe_check_version(now=now) is True
     assert [chat for chat, _ in notifier.recipients] == [1, 2]
     assert "Actualización disponible" in notifier.texts[0]
+    button = notifier.markups[0].inline_keyboard[0][0]
+    assert button.callback_data == "upd:yes"
     assert (
         await database.get_state(scheduler_module.LAST_VERSION_CHECK_KEY)
         == now.date().isoformat()

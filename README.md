@@ -172,7 +172,7 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 | `/avanzado <id> clave=valor` | Categorías, marcas y estado (IDs de las webs) |
 | `/pausar <id>` / `/reanudar <id>` | Pausar o reactivar |
 | `/borrar <id>` | Eliminar (con confirmación) |
-| `/estado` | Versión, uptime, búsquedas y avisos registrados |
+| `/estado` | Versión, uptime, búsquedas y avisos registrados (los administradores ven además el resultado de la última actualización) |
 | `/actualizar` | Actualizar el bot desde Telegram (solo administrador) |
 | `/ayuda` | Ayuda |
 
@@ -305,13 +305,14 @@ administradores:
 
 ```text
 🆕 Actualización disponible
-Instalada: v0.1.435467
-Nueva:     v0.1.435468
+Instalada: v0.1.435471
+Nueva:     v0.1.435472
 
-Usa /actualizar para instalarla.
+[ 🔄 Actualizar ahora ]
 ```
 
 - Solo avisa a `ADMIN_CHAT_IDS` (o `ALLOWED_CHAT_IDS` si está vacío).
+- El botón lanza la misma actualización que `/actualizar`.
 - Repite el aviso cada día mientras la actualización siga pendiente.
 - Si el bot estaba apagado a medianoche, comprueba al arrancar.
 - Si falla la red, reintenta en una hora.

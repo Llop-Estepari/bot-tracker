@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from telegram import (
@@ -39,6 +41,7 @@ from geo import (
     parse_coordinates,
 )
 from notifier import Notifier
+from updates import fetch_remote_version, is_newer
 from version import __release_date__, __version__
 
 if TYPE_CHECKING:
@@ -46,6 +49,8 @@ if TYPE_CHECKING:
     from scheduler import Tracker
 
 logger = logging.getLogger(__name__)
+
+ROOT = Path(__file__).resolve().parent.parent
 
 PLATFORM_LABELS = {"wallapop": "Wallapop", "vinted": "Vinted"}
 
@@ -101,6 +106,7 @@ Desactívalas con <code>/editar 3 precios off</code>.
 Cuando recibas un aviso, el botón «Silenciar búsqueda» pausa esa alerta.
 
 /estado — estado del bot
+/actualizar — actualizar el bot (solo administrador)
 /ayuda — este mensaje
 
 <i>Las plataformas no ofrecen API oficial: el bot usa sus endpoints internos con un ritmo bajo y puede dejar de funcionar si cambian.</i>"""
@@ -538,6 +544,125 @@ async def status_command(
     stats = await _db(context).stats()
     status = _tracker(context).status()
     await send_long(update, format_status(stats, status))
+
+
+# --------------------------------------------------------------------------- #
+# /actualizar
+# --------------------------------------------------------------------------- #
+
+
+def _is_admin(update: Update, settings: Settings) -> bool:
+    chat = update.effective_chat
+    return chat is not None and chat.id in settings.effective_admin_chat_ids
+
+
+def _update_lock() -> Path:
+    return ROOT / ".update-lock"
+
+
+async def update_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    if message is None:
+        return
+    if not _is_admin(update, _settings(context)):
+        await message.reply_text(
+            "⛔ Solo el administrador del bot puede actualizarlo."
+        )
+        return
+    if _update_lock().exists():
+        await message.reply_text(
+            "⏳ Ya hay una actualización en curso. Espera a que termine."
+        )
+        return
+
+    try:
+        remote = await asyncio.to_thread(fetch_remote_version)
+    except (OSError, ValueError) as exc:
+        await message.reply_text(
+            f"⚠️ No pude comprobar la última versión: {exc}"
+        )
+        return
+
+    if not is_newer(remote, __version__):
+        await message.reply_text(
+            f"✅ Ya estás en la última versión (v{__version__})."
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "✅ Sí, actualizar", callback_data="upd:yes"
+                ),
+                InlineKeyboardButton(
+                    "Cancelar", callback_data="upd:no"
+                ),
+            ]
+        ]
+    )
+    await message.reply_text(
+        f"🔄 Versión actual: <b>v{__version__}</b>\n"
+        f"🆕 Disponible: <b>v{remote}</b>\n\n"
+        "¿Actualizar ahora? El bot estará offline unos 20-30 s.",
+        parse_mode="HTML",
+        reply_markup=keyboard,
+    )
+
+
+async def update_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    assert query is not None
+    settings = _settings(context)
+    if not _is_admin(update, settings):
+        await query.answer("Sin permiso", show_alert=True)
+        return
+
+    await query.answer()
+    if query.data == "upd:no":
+        await query.edit_message_text("Actualización cancelada.")
+        return
+
+    if _update_lock().exists():
+        await query.edit_message_text(
+            "⏳ Ya hay una actualización en curso. Espera a que termine."
+        )
+        return
+
+    script = ROOT / "deploy" / "self-update.sh"
+    if not script.is_file():
+        await query.edit_message_text(
+            "⚠️ No encuentro deploy/self-update.sh en la instalación."
+        )
+        return
+
+    chat = update.effective_chat
+    if chat is None:
+        return
+
+    try:
+        await asyncio.create_subprocess_exec(
+            "bash",
+            str(script),
+            str(chat.id),
+            cwd=str(ROOT),
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        await query.edit_message_text(f"⚠️ No pude iniciar la actualización: {exc}")
+        return
+
+    await query.edit_message_text(
+        "🔄 Actualización iniciada. El bot se reiniciará y te avisaré al"
+        " terminar."
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1333,6 +1458,8 @@ def register_handlers(app: Application, settings: Settings) -> None:
     app.add_handler(CommandHandler("reanudar", resume_alert))
     app.add_handler(CommandHandler("borrar", delete_alert))
     app.add_handler(CommandHandler("estado", status_command))
+    app.add_handler(CommandHandler("actualizar", update_command))
+    app.add_handler(CallbackQueryHandler(update_callback, pattern=r"^upd:"))
     app.add_handler(CallbackQueryHandler(mute_callback, pattern=r"^mute:"))
     app.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:"))
     app.add_handler(CommandHandler("cancelar", cancel_new))

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Sube la versión, actualiza el changelog y crea el tag de release.
+"""Publica una nueva build del bot.
+
+El esquema de versión es ``0.1.<build>``: el prefijo ``0.1`` es fijo y el
+último número es un contador que sube en cada publicación. No hay
+major/minor/patch.
 
 Uso:
-    python scripts/release.py patch "Corrige el filtrado de palabras"
-    python scripts/release.py minor "Añade el comando /version"
-    python scripts/release.py major "Rompe el formato de configuración"
+    python scripts/release.py "Añade el comando /actualizar"
+    python scripts/release.py --dry-run "Prueba sin publicar"
 """
 
 from __future__ import annotations
@@ -18,29 +21,35 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "version.py"
+BUILD_FILE = ROOT / "BUILD"
 CHANGELOG_FILE = ROOT / "CHANGELOG.md"
 
-SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
-VERSION_RE = re.compile(r'__version__ = "(\d+\.\d+\.\d+)"')
+VERSION_RE = re.compile(r'__version__ = "([^"]+)"')
 DATE_RE = re.compile(r'__release_date__ = "\d{4}-\d{2}-\d{2}"')
+BUILD_RE = re.compile(r"^\d+$")
+SCHEME = "0.1"
 
 
 class ReleaseError(RuntimeError):
     """Error controlado del proceso de release."""
 
 
-def bump_version(version: str, part: str) -> str:
-    match = SEMVER_RE.fullmatch(version)
-    if not match:
-        raise ReleaseError(f"versión actual no válida: {version!r}")
-    major, minor, patch = (int(value) for value in match.groups())
-    if part == "major":
-        return f"{major + 1}.0.0"
-    if part == "minor":
-        return f"{major}.{minor + 1}.0"
-    if part == "patch":
-        return f"{major}.{minor}.{patch + 1}"
-    raise ReleaseError(f"tipo de subida no válido: {part!r}")
+def read_build() -> int:
+    if not BUILD_FILE.is_file():
+        raise ReleaseError("no existe el fichero BUILD")
+    raw = BUILD_FILE.read_text(encoding="utf-8").strip()
+    if not BUILD_RE.fullmatch(raw):
+        raise ReleaseError(f"BUILD no es un número: {raw!r}")
+    return int(raw)
+
+
+def write_build(build: int) -> None:
+    BUILD_FILE.write_text(f"{build}\n", encoding="utf-8")
+
+
+def next_version() -> tuple[str, int]:
+    build = read_build() + 1
+    return f"{SCHEME}.{build}", build
 
 
 def read_version() -> str:
@@ -109,9 +118,8 @@ def tag_exists(tag: str) -> bool:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Sube la versión y crea el tag de release."
+        description="Publica una nueva build (0.1.N)."
     )
-    parser.add_argument("bump", choices=["patch", "minor", "major"])
     parser.add_argument("message", nargs="+", help="descripción del cambio")
     parser.add_argument(
         "--dry-run", action="store_true", help="solo mostrar el resultado"
@@ -131,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         ensure_main_branch()
         ensure_clean_tree()
         current = read_version()
-        new_version = bump_version(current, args.bump)
+        new_version, new_build = next_version()
         tag = f"v{new_version}"
         if tag_exists(tag):
             raise ReleaseError(f"el tag {tag} ya existe")
@@ -139,24 +147,36 @@ def main(argv: list[str] | None = None) -> int:
         entry = build_changelog_entry(new_version, release_date, message)
         if args.dry_run:
             print(f"versión actual: {current}")
-            print(f"nueva versión : {new_version}")
+            print(f"nueva versión : {new_version} (build {new_build})")
             print()
             print(entry, end="")
             return 0
 
-        print("==> Comprobando lint y tests")
-        run([sys.executable, "-m", "ruff", "check", "."])
-        run([sys.executable, "-m", "pytest", "-q"])
-
         print(f"==> Actualizando versión {current} -> {new_version}")
+        original = {
+            VERSION_FILE: VERSION_FILE.read_text(encoding="utf-8"),
+            BUILD_FILE: BUILD_FILE.read_text(encoding="utf-8"),
+            CHANGELOG_FILE: CHANGELOG_FILE.read_text(encoding="utf-8"),
+        }
         update_version_file(new_version, release_date)
+        write_build(new_build)
         changelog = CHANGELOG_FILE.read_text(encoding="utf-8")
         CHANGELOG_FILE.write_text(
             insert_changelog_entry(changelog, entry), encoding="utf-8"
         )
 
+        try:
+            print("==> Comprobando lint y tests")
+            run([sys.executable, "-m", "ruff", "check", "."])
+            run([sys.executable, "-m", "pytest", "-q"])
+        except subprocess.CalledProcessError:
+            for path, content in original.items():
+                path.write_text(content, encoding="utf-8")
+            print("↩️  Cambios de versión revertidos", file=sys.stderr)
+            raise
+
         print("==> Creando commit y tag")
-        run(["git", "add", "version.py", "CHANGELOG.md"])
+        run(["git", "add", "version.py", "BUILD", "CHANGELOG.md"])
         run(["git", "commit", "-m", f"release: {tag} — {message}"])
         run(["git", "tag", "-a", tag, "-m", f"{tag} — {message}"])
 

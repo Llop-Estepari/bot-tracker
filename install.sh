@@ -283,6 +283,9 @@ case "$TOKEN" in
     *) fail "el token no tiene el formato 123456:ABC" ;;
 esac
 [ -n "$CHAT_IDS" ] && set_env "ALLOWED_CHAT_IDS" "$CHAT_IDS"
+if [ -n "$CHAT_IDS" ] && ! grep -Eq '^ADMIN_CHAT_IDS=.+' .env; then
+    set_env "ADMIN_CHAT_IDS" "$CHAT_IDS"
+fi
 chmod 600 .env
 
 if [ -f tracker.db ]; then

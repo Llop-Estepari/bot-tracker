@@ -10,8 +10,14 @@ from version import __release_date__, __version__
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_version_es_semver():
-    assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
+def test_version_sigue_el_esquema_build():
+    assert re.fullmatch(r"0\.1\.\d+", __version__)
+
+
+def test_version_coincide_con_build():
+    build = (ROOT / "BUILD").read_text(encoding="utf-8").strip()
+
+    assert __version__ == f"0.1.{build}"
 
 
 def test_fecha_de_release_valida():

@@ -173,6 +173,7 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 | `/pausar <id>` / `/reanudar <id>` | Pausar o reactivar |
 | `/borrar <id>` | Eliminar (con confirmación) |
 | `/estado` | Versión, uptime, búsquedas y avisos registrados |
+| `/actualizar` | Actualizar el bot desde Telegram (solo administrador) |
 | `/ayuda` | Ayuda |
 
 ### Editar filtros
@@ -263,6 +264,23 @@ Usa `-` como valor para borrar un filtro.
 ## 3. Mantenimiento
 
 ### Actualizar
+
+#### Desde Telegram
+
+Si eres el administrador (`ADMIN_CHAT_IDS`), envía:
+
+```text
+/actualizar
+```
+
+El bot consulta la última versión publicada. Si hay una nueva, muestra un botón
+para confirmar y lanza la actualización en un proceso aparte, porque el servicio
+se reinicia durante el proceso (unos 20-30 s). Al terminar recibirás un mensaje
+con la versión nueva o con el error.
+
+Si el bot no responde, usa el widget o el comando de abajo.
+
+#### Desde Termux
 
 Un toque en el widget **Actualizar bot** (Termux:Widget) o:
 
@@ -442,6 +460,23 @@ Puedes autorizar a más personas separando IDs por comas. Si dejas
 `ALLOWED_CHAT_IDS` vacío, el bot rechazará a todo el mundo (comportamiento
 seguro por defecto). El instalador de Android rellena este campo por ti.
 
+### Administradores
+
+`ADMIN_CHAT_IDS` decide quién puede ejecutar `/actualizar`, que reinicia el
+servicio y actualiza el código:
+
+```env
+ALLOWED_CHAT_IDS=123456789
+ADMIN_CHAT_IDS=123456789
+```
+
+- Si `ADMIN_CHAT_IDS` está vacío, se usan los mismos chats que
+  `ALLOWED_CHAT_IDS`.
+- Puedes tener varios administradores separados por comas.
+- El instalador de Android lo rellena con tu chat automáticamente.
+- Cámbialo en el móvil con
+  `bash ~/bot-tracker/deploy/phone-config.sh --admin-chat-id 123456789`.
+
 ### Tests y lint
 
 ```bash
@@ -458,38 +493,42 @@ límites de avisos) con fuentes simuladas. No hacen peticiones de red.
 
 ## 6. Versiones y releases
 
-La versión vive en `version.py` (única fuente de verdad) y se muestra en
-`/estado` y en el log de arranque.
+La versión vive en `version.py` y se muestra en `/estado` y en el log de
+arranque. El esquema es:
 
-### Política de versiones
-
-| Tipo | Cuándo | Ejemplo |
-| --- | --- | --- |
-| **PATCH** | Arreglos, documentación, dependencias | `2.1.1` |
-| **MINOR** | Nueva funcionalidad, comandos o filtros | `2.2.0` |
-| **MAJOR** | Cambios incompatibles (config, BD, comandos) | `3.0.0` |
-
-Ningún cambio llega a `main` sin subir `version.py` y sin entrada en
-`CHANGELOG.md`.
-
-### Publicar una versión
-
-```bash
-python scripts/release.py patch "Corrige el filtrado de palabras"
-python scripts/release.py minor "Añade el comando /version"
-python scripts/release.py major "Cambia el formato de configuración"
+```text
+0.1.<build>
 ```
 
-El script ejecuta ruff y los tests, sube la versión, añade la entrada al
-changelog, crea el commit `release: vX.Y.Z`, el tag `vX.Y.Z` y empuja todo a
-GitHub. `--dry-run` muestra el resultado sin tocar nada y `--no-push` deja el
-commit y el tag en local.
+- `0.1` es **fijo**: identifica el esquema, no una versión que haya que subir.
+- `<build>` es un contador que aumenta en cada publicación: `0.1.435464`,
+  `0.1.435465`, `0.1.435466`…
+- No hay `major`, `minor` ni `patch`. Cada release es una build nueva.
+- El contador se guarda en `BUILD` y `version.py` debe coincidir con él.
+
+### Publicar una build
+
+Haz commit de los cambios y ejecuta:
+
+```bash
+python scripts/release.py "Añade el comando /actualizar"
+```
+
+El script:
+
+1. actualiza `version.py` y `BUILD`;
+2. añade la entrada al `CHANGELOG.md`;
+3. ejecuta `ruff` y los tests (si fallan, revierte los cambios de versión);
+4. crea el commit `release: v0.1.N`, el tag `v0.1.N` y empuja a GitHub.
+
+`--dry-run` muestra el resultado sin tocar nada y `--no-push` deja el commit y
+el tag en local.
 
 ### Comprobaciones
 
 ```bash
-python scripts/check_version.py          # SemVer, fecha y changelog
-python scripts/check_version.py v2.1.0   # además, que el tag coincida
+python scripts/check_version.py            # esquema, BUILD, fecha y changelog
+python scripts/check_version.py v0.1.42    # además, que el tag coincida
 ```
 
 La CI (`.github/workflows/ci.yml`):
@@ -497,9 +536,10 @@ La CI (`.github/workflows/ci.yml`):
 - comprueba `bash -n` de todos los scripts;
 - ejecuta `ruff` y `pytest` en cada push/PR;
 - falla si un cambio no modifica `version.py`;
-- en tags `v*`, verifica que el tag coincide con `version.py`.
+- en tags `v*`, verifica que el tag coincide con `version.py` y `BUILD`.
 
 No se crean GitHub Releases: el historial vive en `CHANGELOG.md` y en los tags.
+Los tags antiguos (`v2.x`) se conservan; las builds nuevas usan `v0.1.N`.
 
 ---
 
@@ -545,7 +585,15 @@ lanza `/probar <id>` y revisa `tail -f ~/bot-tracker/logs/current`.
 **La actualización no se aplica**
 Revisa `~/bot-tracker/update.log`. El script descarta los cambios locales con
 backup y hace rollback si falla; con runit baja el servicio antes de actualizar,
-así que no hay que parar nada a mano.
+así que no hay que parar nada a mano. El comando `/actualizar` escribe además su
+resultado en `~/bot-tracker/update-status`.
+
+**`/actualizar` dice que no hay permiso**
+Tu chat no está en `ADMIN_CHAT_IDS`. Añádelo:
+
+```bash
+bash ~/bot-tracker/deploy/phone-config.sh --admin-chat-id TU_ID --restart
+```
 
 **Cambiar de país en Vinted**
 Ajusta en `.env`:
@@ -574,6 +622,7 @@ scheduler.py         Bucle de comprobación y deduplicación
 sources/wallapop.py  Cliente de Wallapop
 sources/vinted.py    Cliente de Vinted
 bot/handlers.py      Comandos, asistente y callbacks
+updates.py           Comprobación de la última versión publicada
 install.sh           Instalador de una línea (desde el móvil)
 update.sh            Lanzador corto: bash ~/bot-tracker/update.sh
 deploy/              Scripts de Termux
@@ -583,10 +632,12 @@ deploy/              Scripts de Termux
   phone-shortcuts.sh   Atajos de Termux:Widget
   phone-config.sh      Token y chats autorizados
   phone-uninstall.sh   Desinstalación (conserva datos)
+  self-update.sh       Actualización lanzada desde /actualizar
   termux-update.sh     Actualización (lo usa update.sh)
 scripts/             Release, control de versión y verificación de fuentes
 tests/               Tests + fixtures reales de las APIs
-version.py           Versión de la aplicación
+version.py           Versión de la aplicación (0.1.N)
+BUILD                Contador de build
 CHANGELOG.md         Historial de versiones
 .github/workflows/   CI (tests, lint y control de versión)
 ```

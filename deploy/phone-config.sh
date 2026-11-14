@@ -5,6 +5,7 @@
 #   bash deploy/phone-config.sh --token "123:ABC"
 #   bash deploy/phone-config.sh --chat-id 123456789
 #   bash deploy/phone-config.sh --chat-id 123456789 --restart
+#   bash deploy/phone-config.sh --admin-chat-id 123456789
 #   bash deploy/phone-config.sh --show
 
 set -euo pipefail
@@ -15,6 +16,7 @@ export SVDIR="$PREFIX/var/service"
 ENV_FILE="$DEST/.env"
 TOKEN=""
 CHAT_IDS=""
+ADMIN_IDS=""
 RESTART=0
 SHOW=0
 
@@ -27,10 +29,11 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --token) TOKEN="${2:-}"; shift 2 ;;
         --chat-id) CHAT_IDS="${2:-}"; shift 2 ;;
+        --admin-chat-id) ADMIN_IDS="${2:-}"; shift 2 ;;
         --restart) RESTART=1; shift ;;
         --show) SHOW=1; shift ;;
         -h|--help)
-            sed -n '2,10p' "$0"
+            sed -n '2,11p' "$0"
             exit 0
             ;;
         *) die "opción desconocida: $1" ;;
@@ -52,13 +55,13 @@ set_env() {
 
 if [ "$SHOW" -eq 1 ]; then
     echo "Configuración actual ($ENV_FILE):"
-    grep -E '^(TELEGRAM_BOT_TOKEN|ALLOWED_CHAT_IDS)=' "$ENV_FILE" \
+    grep -E '^(TELEGRAM_BOT_TOKEN|ALLOWED_CHAT_IDS|ADMIN_CHAT_IDS)=' "$ENV_FILE" \
         | sed -E 's|^(TELEGRAM_BOT_TOKEN=).*|\1***oculto***|'
     exit 0
 fi
 
-[ -n "$TOKEN$CHAT_IDS" ] \
-    || die "indica --token y/o --chat-id (o usa --show)"
+[ -n "$TOKEN$CHAT_IDS$ADMIN_IDS" ] \
+    || die "indica --token, --chat-id y/o --admin-chat-id (o usa --show)"
 
 if [ -n "$TOKEN" ]; then
     case "$TOKEN" in
@@ -75,6 +78,14 @@ if [ -n "$CHAT_IDS" ]; then
     esac
     set_env "ALLOWED_CHAT_IDS" "$CHAT_IDS"
     echo "✅ Chats autorizados: $CHAT_IDS"
+fi
+
+if [ -n "$ADMIN_IDS" ]; then
+    case "$ADMIN_IDS" in
+        *[!0-9,]*|"") die "los admin_chat_id deben ser números separados por comas" ;;
+    esac
+    set_env "ADMIN_CHAT_IDS" "$ADMIN_IDS"
+    echo "✅ Administradores: $ADMIN_IDS"
 fi
 
 chmod 600 "$ENV_FILE"

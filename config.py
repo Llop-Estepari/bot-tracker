@@ -33,7 +33,7 @@ def _env_float(name: str, default: float) -> float:
         raise ValueError(f"{name} debe ser un número") from exc
 
 
-def _parse_chat_ids(raw: str) -> frozenset[int]:
+def _parse_chat_ids(raw: str, name: str = "ALLOWED_CHAT_IDS") -> frozenset[int]:
     ids: set[int] = set()
     for chunk in raw.replace(";", ",").split(","):
         chunk = chunk.strip()
@@ -43,7 +43,7 @@ def _parse_chat_ids(raw: str) -> frozenset[int]:
             ids.add(int(chunk))
         except ValueError as exc:
             raise ValueError(
-                f"ALLOWED_CHAT_IDS contiene un id no válido: {chunk!r}"
+                f"{name} contiene un id no válido: {chunk!r}"
             ) from exc
     return frozenset(ids)
 
@@ -54,6 +54,7 @@ class Settings:
 
     telegram_bot_token: str
     allowed_chat_ids: frozenset[int]
+    admin_chat_ids: frozenset[int]
     database_path: Path
     default_interval: int
     min_interval: int
@@ -92,6 +93,9 @@ class Settings:
             allowed_chat_ids=_parse_chat_ids(
                 os.getenv("ALLOWED_CHAT_IDS", "")
             ),
+            admin_chat_ids=_parse_chat_ids(
+                os.getenv("ADMIN_CHAT_IDS", ""), "ADMIN_CHAT_IDS"
+            ),
             database_path=database_path,
             default_interval=default_interval,
             min_interval=min_interval,
@@ -112,3 +116,8 @@ class Settings:
             request_timeout=_env_float("REQUEST_TIMEOUT_SECONDS", 25.0),
             log_level=log_level,
         )
+
+    @property
+    def effective_admin_chat_ids(self) -> frozenset[int]:
+        """Administradores explícitos o, si no hay, los chats autorizados."""
+        return self.admin_chat_ids or self.allowed_chat_ids

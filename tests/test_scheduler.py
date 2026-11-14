@@ -17,6 +17,7 @@ def make_settings(**overrides) -> Settings:
     values = {
         "telegram_bot_token": "test",
         "allowed_chat_ids": frozenset({1}),
+        "admin_chat_ids": frozenset({1}),
         "database_path": Path("test.db"),
         "default_interval": 90,
         "min_interval": 60,

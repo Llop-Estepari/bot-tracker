@@ -42,7 +42,7 @@ from geo import (
     parse_coordinates,
 )
 from notifier import Notifier
-from updates import fetch_remote_version, is_newer, read_update_status
+from updates import fetch_remote_version, is_newer
 from version import __release_date__, __version__
 
 if TYPE_CHECKING:
@@ -599,19 +599,7 @@ async def status_command(
 ) -> None:
     stats = await _db(context).stats()
     status = _tracker(context).status()
-    text = format_status(stats, status)
-
-    chat = update.effective_chat
-    settings = _settings(context)
-    if chat is not None and chat.id in settings.effective_admin_chat_ids:
-        update_status = read_update_status(ROOT / "update-status")
-        if update_status:
-            text += (
-                "\n🔄 <b>Última actualización:</b>"
-                f" <i>{html.escape(update_status)}</i>"
-            )
-
-    await send_long(update, text)
+    await send_long(update, format_status(stats, status))
 
 
 # --------------------------------------------------------------------------- #

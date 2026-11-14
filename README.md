@@ -173,7 +173,7 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 | `/avanzado <id> clave=valor` | Categorías, marcas y estado (IDs de las webs) |
 | `/pausar <id>` / `/reanudar <id>` | Pausar o reactivar |
 | `/borrar <id>` | Eliminar (con confirmación) |
-| `/estado` | Versión, uptime, búsquedas y avisos registrados (los administradores ven además el resultado de la última actualización) |
+| `/estado` | Versión, uptime, búsquedas, avisos registrados y latido del scheduler |
 | `/actualizar` | Actualizar el bot desde Telegram (solo administrador) |
 | `/iphone` | Crear o desactivar una búsqueda de prueba de iPhone (solo administrador) |
 | `/ayuda` | Ayuda |

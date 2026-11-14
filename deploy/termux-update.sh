@@ -85,6 +85,23 @@ BEFORE="$(git rev-parse HEAD)"
 STOPPED=0
 BOT_PROCESS_PATTERN='(^|/)[.]venv/bin/python main[.]py$'
 
+# Evita dos actualizaciones simultáneas (widget + terminal + /actualizar).
+UPDATE_LOCK="$DEST/.update-run-lock"
+if ! mkdir "$UPDATE_LOCK" 2>/dev/null; then
+    lock_pid="$(cat "$UPDATE_LOCK/pid" 2>/dev/null || true)"
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+        echo "⏳ Ya hay una actualización en curso (pid $lock_pid)."
+        echo "No se hace nada."
+        exit 0
+    fi
+    echo "AVISO: lock de actualización obsoleto; se elimina." >&2
+    rm -rf "$UPDATE_LOCK"
+    mkdir "$UPDATE_LOCK" \
+        || { echo "❌ No se pudo crear el lock de actualización." >&2; exit 1; }
+fi
+printf '%s\n' "$$" > "$UPDATE_LOCK/pid"
+trap 'rm -rf "$UPDATE_LOCK"' EXIT
+
 ensure_logs() {
     mkdir -p "$DEST/logs"
     if [ ! -f "$DEST/logs/config" ]; then
@@ -134,18 +151,41 @@ on_error() {
     set +e
     echo
     echo "❌ La actualización ha fallado (código $code)." >&2
+    if [ "$HAS_SERVICE" -eq 1 ]; then
+        echo "--- estado del servicio ---" >&2
+        sv status "$SESSION" 2>/dev/null >&2 || true
+        tail -n 15 "$DEST/logs/current" 2>/dev/null >&2 || true
+    fi
     if [ "$STOPPED" -eq 1 ]; then
         echo "↩️  Volviendo al commit $BEFORE" >&2
         stop_bot
         git reset --hard "$BEFORE"
         start_bot
+        STOPPED=0
         echo "El bot se ha reiniciado con la versión anterior." >&2
         echo "Backups disponibles en: $BACKUPS" >&2
     fi
     exit "$code"
 }
 
+cleanup() {
+    local code=$?
+    trap - ERR
+    if [ "${STOPPED:-0}" -eq 1 ]; then
+        echo "↩️  El bot quedó parado; arrancándolo de nuevo…" >&2
+        start_bot || true
+        STOPPED=0
+    fi
+    rm -rf "$UPDATE_LOCK" 2>/dev/null || true
+    if [ -n "${BOT_TRACKER_TMP_SCRIPT:-}" ]; then
+        rm -f "$BOT_TRACKER_TMP_SCRIPT" 2>/dev/null || true
+    fi
+    return "$code"
+}
+
 trap on_error ERR
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 echo "== 1/5 Parando el bot =="
 stop_bot
@@ -234,6 +274,7 @@ echo
 echo "== 5/5 Arrancando el bot =="
 if [ "$HAS_SERVICE" -eq 1 ]; then
     LOG_FILE="$DEST/logs/current"
+    LOG_LINES_BEFORE="$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)"
     start_bot
     for _ in $(seq 1 15); do
         if sv status "$SESSION" 2>/dev/null | grep -q '^run:'; then
@@ -307,4 +348,23 @@ echo "Versión: ${NEW_VERSION:-desconocida}"
 echo "Backups: $BACKUPS"
 echo "Log del bot: $LOG_FILE"
 echo
-tail -n 20 "$LOG_FILE" 2>/dev/null || true
+echo "Servicio:"
+if [ "$HAS_SERVICE" -eq 1 ]; then
+    sv status "$SESSION" 2>/dev/null | sed 's/^/  /' || true
+else
+    pgrep -af "$BOT_PROCESS_PATTERN" 2>/dev/null | sed 's/^/  /' || true
+fi
+if [ -n "$NEW_VERSION" ] && [ -f "$LOG_FILE" ]; then
+    STARTUP_LINE="$(grep "Arrancando el bot v${NEW_VERSION}" \
+        "$LOG_FILE" 2>/dev/null | tail -n 1 || true)"
+    if [ -n "$STARTUP_LINE" ]; then
+        echo "Arranque:"
+        echo "  $STARTUP_LINE"
+    fi
+    NEW_LOG="$(tail -n +"$((LOG_LINES_BEFORE + 1))" "$LOG_FILE" 2>/dev/null || true)"
+    if printf '%s' "$NEW_LOG" \
+        | grep -Eq "ConnectError|No address associated|Error de red"; then
+        echo
+        echo "ℹ️  Hay avisos de red en el log; el bot los reintenta solo."
+    fi
+fi

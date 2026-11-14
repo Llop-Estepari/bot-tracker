@@ -328,6 +328,11 @@ El script baja el servicio runit, guarda un backup de `.env`, `tracker.db` y
 del worktree, actualiza el código, instala dependencias si cambiaron, arranca y
 verifica la nueva versión. Si algo falla, vuelve al commit anterior.
 
+Evita actualizaciones simultáneas (widget, terminal o `/actualizar`) y, si se
+interrumpe después de parar el bot, lo vuelve a arrancar. Al terminar muestra
+solo el estado del servicio y la línea de arranque; los avisos de red del log
+se reintentan solos.
+
 ### Widgets de Termux
 
 Solo se crean dos atajos:
@@ -670,7 +675,7 @@ vez:
 
 ```bash
 cd ~/bot-tracker
-printf 'logs/\nupdate-status\n.update-lock\n' >> .git/info/exclude
+printf 'logs/\nupdate-status\n.update-lock\n.update-run-lock\n' >> .git/info/exclude
 mkdir -p logs
 printf 's5000000\nn3\n' > logs/config
 sv restart bot/log

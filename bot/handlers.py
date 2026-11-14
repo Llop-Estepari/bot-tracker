@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
 
 PLATFORM_LABELS = {"wallapop": "Wallapop", "vinted": "Vinted"}
+IPHONE_ALERT_NAME = "🧪 Prueba iPhone"
 
 HELP_TEXT = """🤖 <b>Tracker de Wallapop y Vinted</b>
 
@@ -566,6 +567,56 @@ def _update_lock() -> Path:
     return ROOT / ".update-lock"
 
 
+def build_iphone_alert(chat_id: int, settings: Settings) -> NewAlert:
+    """Búsqueda de prueba: iPhone en ambas plataformas y sin filtros."""
+    return NewAlert(
+        chat_id=chat_id,
+        name=IPHONE_ALERT_NAME,
+        platforms=["wallapop", "vinted"],
+        keywords="iphone",
+        wallapop_shipping=False,
+        strict_keywords=False,
+        interval_seconds=settings.min_interval,
+        notify_existing=True,
+    )
+
+
+async def iphone_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    message = update.effective_message
+    chat = update.effective_chat
+    if message is None or chat is None:
+        return
+
+    settings = _settings(context)
+    if not _is_admin(update, settings):
+        await message.reply_text(
+            "⛔ Solo el administrador puede usar /iphone."
+        )
+        return
+
+    db = _db(context)
+    alerts = await db.list_alerts(chat_id=chat.id)
+    existing = [alert for alert in alerts if alert.name == IPHONE_ALERT_NAME]
+    for alert in existing:
+        await db.delete_alert(alert.id)
+
+    if existing:
+        await message.reply_text(
+            "🧪 Búsqueda de prueba iPhone desactivada y eliminada."
+        )
+        return
+
+    alert = await db.create_alert(build_iphone_alert(chat.id, settings))
+    await send_long(
+        update,
+        "🧪 <b>Búsqueda de prueba creada</b>\n\n"
+        + format_alert(alert)
+        + "\n\nEscribe /iphone otra vez para desactivarla.",
+    )
+
+
 async def update_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -930,13 +981,27 @@ async def _ask_exclude(
     text = (
         "(6/8) Palabras o frases que deben excluirse, separadas por comas."
         " Ej: <code>roto, para piezas, bisagras</code>.\n"
-        "Escribe <code>-</code> si no quieres excluir nada."
+        "Escribe <code>-</code> o pulsa <b>Ninguna</b> si no quieres excluir"
+        " nada."
+    )
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🚫 Ninguna", callback_data="wizexclude:none"
+                )
+            ]
+        ]
     )
     query = update.callback_query
     if edit and query is not None:
-        await query.edit_message_text(text, parse_mode="HTML")
+        await query.edit_message_text(
+            text, parse_mode="HTML", reply_markup=keyboard
+        )
     else:
-        await update.effective_message.reply_text(text, parse_mode="HTML")
+        await update.effective_message.reply_text(
+            text, parse_mode="HTML", reply_markup=keyboard
+        )
     return WIZ_EXCLUDE
 
 
@@ -1150,13 +1215,37 @@ async def new_keywords(
         )
         return WIZ_KEYWORDS
     _wizard(context)["keywords"] = keywords
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💶 Sin filtro", callback_data="wizprice:none"
+                )
+            ]
+        ]
+    )
     await update.effective_message.reply_text(
         "(4/8) Precio: <code>mín-máx</code>.\n\n"
         "Ejemplos: <code>100-400</code>, <code>100-</code> (solo mínimo),"
-        " <code>-400</code> (solo máximo), <code>-</code> (sin filtro).",
+        " <code>-400</code> (solo máximo), <code>-</code> (sin filtro).\n\n"
+        "También puedes pulsar <b>Sin filtro</b>.",
         parse_mode="HTML",
+        reply_markup=keyboard,
     )
     return WIZ_PRICE
+
+
+async def _apply_price(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    minimum: float | None,
+    maximum: float | None,
+    edit: bool = False,
+) -> int:
+    wizard = _wizard(context)
+    wizard["min_price"] = minimum
+    wizard["max_price"] = maximum
+    return await _ask_distance(update, context, edit=edit)
 
 
 async def new_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1166,54 +1255,87 @@ async def new_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except ValueError as exc:
         await update.effective_message.reply_text(f"⚠️ {exc}")
         return WIZ_PRICE
-    wizard = _wizard(context)
-    wizard["min_price"] = minimum
-    wizard["max_price"] = maximum
+    return await _apply_price(update, context, minimum, maximum)
 
-    return await _ask_distance(update, context)
+
+async def new_price_choice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    query = update.callback_query
+    assert query is not None
+    await query.answer()
+    if query.data != "wizprice:none":
+        return WIZ_PRICE
+    return await _apply_price(update, context, None, None, edit=True)
+
+
+async def _apply_exclude(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    exclude: str,
+    edit: bool = False,
+) -> int:
+    _wizard(context)["exclude_words"] = exclude
+    return await _ask_interval(update, context, edit=edit)
 
 
 async def new_exclude(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> int:
     text = (update.effective_message.text or "").strip()
-    wizard = _wizard(context)
-    wizard["exclude_words"] = "" if text == "-" else text
+    return await _apply_exclude(
+        update, context, "" if text == "-" else text
+    )
+
+
+async def new_exclude_choice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    query = update.callback_query
+    assert query is not None
+    await query.answer()
+    return await _apply_exclude(update, context, "", edit=True)
+
+
+async def _ask_interval(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False
+) -> int:
     settings = _settings(context)
-    await update.effective_message.reply_text(
+    text = (
         "(7/8) ¿Cada cuántos segundos reviso?"
         f" Mínimo {settings.min_interval}, por defecto"
-        f" {settings.default_interval}. Escribe <code>-</code> para el"
-        " valor por defecto.",
-        parse_mode="HTML",
+        f" {settings.default_interval}. Escribe <code>-</code> o pulsa el"
+        " botón."
     )
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    f"⏱ Por defecto ({settings.default_interval} s)",
+                    callback_data="wizinterval:default",
+                )
+            ]
+        ]
+    )
+    query = update.callback_query
+    if edit and query is not None:
+        await query.edit_message_text(
+            text, parse_mode="HTML", reply_markup=keyboard
+        )
+    else:
+        await update.effective_message.reply_text(
+            text, parse_mode="HTML", reply_markup=keyboard
+        )
     return WIZ_INTERVAL
 
 
-async def new_interval(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+async def _ask_notify(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    interval: int,
+    edit: bool = False,
 ) -> int:
-    settings = _settings(context)
-    text = (update.effective_message.text or "").strip()
-    if text in {"-", ""}:
-        interval = settings.default_interval
-    else:
-        try:
-            interval = int(text)
-        except ValueError:
-            await update.effective_message.reply_text(
-                "Escribe un número de segundos o <code>-</code>.",
-                parse_mode="HTML",
-            )
-            return WIZ_INTERVAL
-        interval = max(interval, settings.min_interval)
-        if interval > 3600:
-            await update.effective_message.reply_text(
-                "El máximo son 3600 segundos (1 hora)."
-            )
-            return WIZ_INTERVAL
     _wizard(context)["interval_seconds"] = interval
-
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -1229,14 +1351,59 @@ async def new_interval(
             ],
         ]
     )
-    await update.effective_message.reply_text(
+    text = (
         "(8/8) ¿Quieres que avise también de los anuncios que ya existen?"
         "\n\nLo normal es <b>No</b>: solo te llegarán los que se publiquen"
-        " a partir de ahora.",
-        parse_mode="HTML",
-        reply_markup=keyboard,
+        " a partir de ahora."
     )
+    query = update.callback_query
+    if edit and query is not None:
+        await query.edit_message_text(
+            text, parse_mode="HTML", reply_markup=keyboard
+        )
+    else:
+        await update.effective_message.reply_text(
+            text, parse_mode="HTML", reply_markup=keyboard
+        )
     return WIZ_NOTIFY
+
+
+async def new_interval(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    settings = _settings(context)
+    text = (update.effective_message.text or "").strip()
+    if text in {"-", ""}:
+        interval = settings.default_interval
+    else:
+        try:
+            interval = int(text)
+        except ValueError:
+            await update.effective_message.reply_text(
+                "Escribe un número de segundos, <code>-</code> o pulsa el"
+                " botón.",
+                parse_mode="HTML",
+            )
+            return WIZ_INTERVAL
+        interval = max(interval, settings.min_interval)
+        if interval > 3600:
+            await update.effective_message.reply_text(
+                "El máximo son 3600 segundos (1 hora)."
+            )
+            return WIZ_INTERVAL
+    return await _ask_notify(update, context, interval)
+
+
+async def new_interval_choice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    query = update.callback_query
+    assert query is not None
+    await query.answer()
+    settings = _settings(context)
+    return await _ask_notify(
+        update, context, settings.default_interval, edit=True
+    )
 
 
 async def new_notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1420,7 +1587,12 @@ def _build_conversation() -> ConversationHandler:
             WIZ_KEYWORDS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, new_keywords)
             ],
-            WIZ_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_price)],
+            WIZ_PRICE: [
+                CallbackQueryHandler(
+                    new_price_choice, pattern=r"^wizprice:"
+                ),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, new_price),
+            ],
             WIZ_DISTANCE: [
                 CallbackQueryHandler(
                     new_distance_choice, pattern=r"^wizdist:"
@@ -1431,10 +1603,16 @@ def _build_conversation() -> ConversationHandler:
                 ),
             ],
             WIZ_EXCLUDE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, new_exclude)
+                CallbackQueryHandler(
+                    new_exclude_choice, pattern=r"^wizexclude:"
+                ),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, new_exclude),
             ],
             WIZ_INTERVAL: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, new_interval)
+                CallbackQueryHandler(
+                    new_interval_choice, pattern=r"^wizinterval:"
+                ),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, new_interval),
             ],
             WIZ_NOTIFY: [CallbackQueryHandler(new_notify, pattern=r"^wiznotify:")],
         },
@@ -1460,6 +1638,7 @@ def register_handlers(app: Application, settings: Settings) -> None:
     app.add_handler(CommandHandler("borrar", delete_alert))
     app.add_handler(CommandHandler("estado", status_command))
     app.add_handler(CommandHandler("actualizar", update_command))
+    app.add_handler(CommandHandler("iphone", iphone_command))
     app.add_handler(CallbackQueryHandler(update_callback, pattern=r"^upd:"))
     app.add_handler(CallbackQueryHandler(mute_callback, pattern=r"^mute:"))
     app.add_handler(CallbackQueryHandler(delete_callback, pattern=r"^del:"))

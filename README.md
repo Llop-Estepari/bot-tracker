@@ -147,12 +147,13 @@ El asistente pide, paso a paso:
 2. **Plataformas** — Wallapop, Vinted o ambas.
 3. **Palabras clave** — lo que buscará la plataforma.
 4. **Precio** — `100-400`, `100-` (solo mínimo), `-400` (solo máximo),
-   `-` (sin filtro).
+   `-` (sin filtro) o el botón **💶 Sin filtro**.
 5. **Distancia** (solo Wallapop) — sin límite por defecto, o 5/10/25/50/100/200
    km desde tu ubicación.
 6. **Palabras excluidas** — `roto, para piezas, sin mando` (puede quedar vacío
-   con `-`).
-7. **Intervalo** — segundos entre comprobaciones (mínimo 60, defecto 90).
+   con `-` o el botón **🚫 Ninguna**).
+7. **Intervalo** — segundos entre comprobaciones (mínimo 60, defecto 90), o el
+   botón **⏱ Por defecto**.
 8. **¿Avisar de anuncios ya publicados?** — normalmente **No**: solo
    recibirás los que se publiquen a partir de ahora.
 
@@ -174,6 +175,7 @@ En Wallapop se busca por defecto **solo con envío disponible**. Se cambia con
 | `/borrar <id>` | Eliminar (con confirmación) |
 | `/estado` | Versión, uptime, búsquedas y avisos registrados (los administradores ven además el resultado de la última actualización) |
 | `/actualizar` | Actualizar el bot desde Telegram (solo administrador) |
+| `/iphone` | Crear o desactivar una búsqueda de prueba de iPhone (solo administrador) |
 | `/ayuda` | Ayuda |
 
 ### Editar filtros
@@ -372,6 +374,18 @@ bash ~/bot-tracker/deploy/phone-doctor.sh
 ```
 
 Comprueba servicio, proceso, arranque automático, red, logs y disco.
+
+### Prueba rápida con `/iphone`
+
+Solo para administradores. Crea una búsqueda de prueba:
+
+- palabras clave: `iphone`
+- plataformas: Wallapop y Vinted
+- sin precio, envío, distancia, exclusiones ni modo estricto
+- intervalo mínimo y aviso de anuncios ya publicados
+
+Ejecuta `/iphone` otra vez para **desactivarla y eliminarla**. La búsqueda
+temporal se llama `🧪 Prueba iPhone`.
 
 ### Logs
 

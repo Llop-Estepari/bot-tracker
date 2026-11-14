@@ -5,6 +5,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 La versión es `0.1.<build>`: el último número es un contador que aumenta en
 cada publicación.
 
+## [0.1.435474] - 2026-11-14
+
+### Cambios
+
+- Muestra la hora local y evita que el scheduler se bloquee
+
 ## [0.1.435473] - 2026-11-14
 
 ### Cambios
